@@ -15,12 +15,12 @@ Progress's own official DevOps Framework documentation states that
 dependencies on database artifacts (schema files, structure files, backup
 files) and application packages (WAR/OEAR/PAAR) are not yet supported by
 their tooling either. If Progress hasn't solved this in their own official
-plugin, it is not a reasonable v1 target for oepm.
+plugin, it is not a reasonable v1 target for pope.
 
 ## Decision
 
 A package manifest may declare that it requires a database (and optionally
-what it expects to find there), but oepm never creates, migrates, connects
+what it expects to find there), but pope never creates, migrates, connects
 to, or otherwise manages a database. This is treated the same way npm
 treats `peerDependencies`: declared, checked where feasible, never
 resolved automatically.
@@ -34,7 +34,7 @@ rather than silently assumed to "just work" once resolved.
 
 ## Consequences
 
-- oepm cannot guarantee a resolved dependency graph is actually *runnable*
+- pope cannot guarantee a resolved dependency graph is actually *runnable*
   end to end for DB-bound packages — only that the code is present on
   PROPATH. This must be documented clearly so it isn't mistaken for a
   gap/bug later.

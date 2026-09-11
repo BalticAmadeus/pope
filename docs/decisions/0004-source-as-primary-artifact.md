@@ -13,18 +13,18 @@ OpenEdge-version- and often platform-sensitive, unlike source.
 
 ## Decision
 
-oepm resolves and locks **source** packages (`.cls`/`.i`/resources). A
+pope resolves and locks **source** packages (`.cls`/`.i`/resources). A
 package is portable across OE versions as source. Compiling to `.pl` is an
 explicit, separate, opt-in step layered on top, parameterized by target OE
 version — never something the resolver itself produces or depends on.
 
 ## Consequences
 
-- oepm avoids having to solve r-code cross-version/cross-platform
+- pope avoids having to solve r-code cross-version/cross-platform
   compatibility as a v1 problem.
 - Consumers needing compiled artifacts (e.g. for IP protection or startup
-  performance) need an explicit `oepm build --target-oe=<version>` style
-  step, not implied by `oepm install`.
+  performance) need an explicit `pope build --target-oe=<version>` style
+  step, not implied by `pope install`.
 - The registry (even the local-directory one in v1) must be able to serve
   source packages without assuming a specific OE version exists to
   compile them.

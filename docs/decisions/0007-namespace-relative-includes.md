@@ -11,7 +11,7 @@ unrelated `constants.i` as a bare filename at their package's PROPATH root.
 ABL's `{}` include resolves a bare filename by searching PROPATH **in
 order** for a file with that literal name — not by asking which package
 "owns" it. With both `src` (consumer-app's own) and the vendored
-`oepm_packages/example.calculator/src` on PROPATH, whichever one comes
+`pope_packages/example.calculator/src` on PROPATH, whichever one comes
 first silently wins the whole file, regardless of which one the including
 code actually meant. No compile error, no warning — the class compiles and
 runs, it just picks up the wrong constant.
@@ -53,10 +53,10 @@ opinion on this), at two points:
 
 - **Author-time**: warn when a package's own source uses a bare-filename
   `{}` include for anything outside strictly-local, same-directory use.
-- **Install-time**: when `oepm install` resolves a dependency, scan its
+- **Install-time**: when `pope install` resolves a dependency, scan its
   source for bare-filename includes at its PROPATH root and warn the
   *consumer*, since a dependency's own author-time lint (if it even ran
-  oepm's linter) can't be retroactively trusted.
+  pope's linter) can't be retroactively trusted.
 
 Neither lint is implemented yet; this ADR records the convention and the
 two enforcement points, not a finished tool.
@@ -75,7 +75,7 @@ two enforcement points, not a finished tool.
   open question in [manifest-schema.md](../spec/manifest-schema.md).
 - Lint tooling for both enforcement points is new implementation work, not
   yet scoped in detail — needs a component-scope entry alongside the ones
-  in [0006](0006-oepm-component-scope-v1.md) once designed.
+  in [0006](0006-pope-component-scope-v1.md) once designed.
 
 ## Alternatives considered
 

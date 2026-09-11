@@ -1,7 +1,7 @@
 # PROPATH generation
 
-Status: implemented (`oepm.propath.PropathGenerator`, driven by
-`oepmPropath` in `OepmPlugin.kt`). This was the riskiest, least-proven
+Status: implemented (`pope.propath.PropathGenerator`, driven by
+`popePropath` in `PopePlugin.kt`). This was the riskiest, least-proven
 part of the project; the vertical slice validated the approach. The
 ordering default and the `buildPath` entry-type rules below are current
 behavior. The shadow-warning item at the bottom is still open.
@@ -16,11 +16,11 @@ behavior. The shadow-warning item at the bottom is still open.
   each package name can be active in a given project's PROPATH.
 - A `.pl` file containing only r-code can be added directly to PROPATH. A
   `.pl` containing other source/resource types must be extracted to a
-  directory first, then that directory added instead. oepm must know which
+  directory first, then that directory added instead. pope must know which
   kind of `.pl` it's handling before deciding how to add it.
 - A package/namespace directory cannot contain a period in its name.
 
-## What `oepm propath` needs to produce
+## What `pope propath` needs to produce
 
 Given a resolved dependency graph (from the lockfile), an ordered list of
 filesystem paths (and/or extracted `.pl` directories) suitable for:
@@ -51,15 +51,15 @@ if the include-namespacing convention turns out not to hold everywhere.
 
 ## buildPath entry types (decided 2026-09-03)
 
-`buildPath` entries of type `"source"` are always on the PROPATH `oepm
+`buildPath` entries of type `"source"` are always on the PROPATH `pope
 propath` prints. Entries of type `"test"` are only included when
-explicitly asked for — `oepm propath --tests` (`-PoepmIncludeTests`) —
-appended after the source roots; plain `oepm propath` (the default, used
+explicitly asked for — `pope propath --tests` (`-PpopeIncludeTests`) —
+appended after the source roots; plain `pope propath` (the default, used
 implicitly by anything build/production-facing) never includes them.
 This only affects a manifest's *own* test roots: `GitPackageFetcher`/
 `CatalogRegistry` never read a dependency's `"test"` entries at all when
 fetching it, so a dependency's own tests can never end up copied into a
-consumer's `oepm_packages/` or on a consumer's PROPATH, with or without
+consumer's `pope_packages/` or on a consumer's PROPATH, with or without
 the flag — see `docs/spec/manifest-schema.md`'s `buildPath` row. Any
 other `type` value is ignored everywhere for now (a `"resources"`/images
 type was discussed but not decided or built — it would need its own call
@@ -67,7 +67,7 @@ on whether/how it belongs on PROPATH at all).
 
 ## Open questions
 
-- Whether oepm should warn (or fail) when a generated PROPATH would shadow
+- Whether pope should warn (or fail) when a generated PROPATH would shadow
   an entry already present in the project's existing
   `openedge-project.json` `buildPath`, rather than silently producing a
   second, conflicting source of truth.
