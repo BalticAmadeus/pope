@@ -13,7 +13,7 @@ For a per-file reference of the plugin code itself — what each `.kt` file
 under `src/` contains — see [`../src-kt-file-guide.md`](../src-kt-file-guide.md).
 This doc links to it rather than repeating it.
 
-This repo used to be the whole `oepm` monorepo — plugin, a `demo/` app,
+This repo used to be the whole `pope` monorepo — plugin, a `demo/` app,
 and registry content all together. It's since been split (see README.md's
 intro): this repo is just the plugin now. Real projects that *use* the
 plugin live elsewhere — the demo/consumer app at
@@ -25,30 +25,30 @@ records of the monorepo era and are left as-is on purpose, not updated.
 
 Two definitions first:
 
-- **Gradle** is the build tool oepm is written as a plugin for. A **task**
-  is one named unit of work Gradle can run, e.g. `oepmInstall`. A `.kts`
+- **Gradle** is the build tool pope is written as a plugin for. A **task**
+  is one named unit of work Gradle can run, e.g. `popeInstall`. A `.kts`
   file is a Gradle build script written in the Kotlin language (Gradle
   also supports plain Groovy `.gradle` files, but this repo only uses
   Kotlin ones, hence "`.kts`" — Kotlin Script).
 - **A Gradle plugin** is code that adds new tasks (and other capabilities)
-  to a Gradle project. oepm itself *is* a Gradle plugin — this whole repo
+  to a Gradle project. pope itself *is* a Gradle plugin — this whole repo
   builds one JAR file that other Gradle projects can apply to gain the
-  `oepmInstall`/`oepmUninstall`/`oepmPropath`/`oepmRegistryAdd`/`oepmPrune` tasks.
+  `popeInstall`/`popeUninstall`/`popePropath`/`popeRegistryAdd`/`popePrune` tasks.
 
-## Root project — building the oepm plugin itself
+## Root project — building the pope plugin itself
 
-These files, at the repo root, define and build the oepm plugin. You
-generally don't run these by hand — `oepm`/`oepm.bat` (below) does that
+These files, at the repo root, define and build the pope plugin. You
+generally don't run these by hand — `pope`/`pope.bat` (below) does that
 for you.
 
 - **`settings.gradle.kts`** — the very first file Gradle reads. Just names
-  the project (`oepm`). One line.
+  the project (`pope`). One line.
 - **`build.gradle.kts`** — the main build script for the plugin. It
   declares:
   - This project *is* a Gradle plugin (`java-gradle-plugin`), written in
     Kotlin, targeting Java 17.
-  - The plugin's public identity: id `io.github.erudys27.oepm`, entry
-    class `oepm.OepmPlugin` (the class Gradle runs when someone applies
+  - The plugin's public identity: id `io.github.balticamadeus.pope`, entry
+    class `pope.PopePlugin` (the class Gradle runs when someone applies
     the plugin).
   - Its dependencies: the `org.json` library (for reading/writing JSON)
     and `kotlin-test` (for unit tests). A separate `buildscript {}` block
@@ -61,12 +61,12 @@ for you.
   - Publishing config (`maven-publish`) — see ADR-0008 — and the
     **`scaffoldProject`** task: not something the plugin itself registers
     (a not-yet-wired project has no build to run a task against yet), so
-    it lives here instead, run against oepm-tool's own build with
+    it lives here instead, run against pope's own build with
     `-PtargetDir=<path>`. Generates or non-destructively patches a
-    project's `openedge-project.json`, Gradle wrapper files (in `.oepm/`
+    project's `openedge-project.json`, Gradle wrapper files (in `.pope/`
     for a fresh project, at the root for an already-set-up one — see
-    `scaffold/templates/` below), and `oepm-registries.properties`. This
-    is what `oepm-init` calls under the hood.
+    `scaffold/templates/` below), and `pope-registries.properties`. This
+    is what `pope-init` calls under the hood.
 - **`gradle.properties`** — a few project-wide settings. Currently just
   one line enabling Kotlin's official code style.
 - **`gradle/wrapper/gradle-wrapper.properties`** — pins the exact Gradle
@@ -76,7 +76,7 @@ for you.
 - **`gradle/wrapper/gradle-wrapper.jar`** — a small program that reads the
   properties file above and downloads/runs the pinned Gradle version. You
   never edit this by hand.
-- **`gradlew`** / **`gradlew.bat`** — the scripts you (or `oepm`/`oepm.bat`)
+- **`gradlew`** / **`gradlew.bat`** — the scripts you (or `pope`/`pope.bat`)
   actually run to invoke Gradle (`./gradlew` on Mac/Linux/git-bash,
   `gradlew.bat` on plain Windows cmd). They just launch the wrapper jar
   above.
@@ -87,7 +87,7 @@ Plain text templates with `{{TOKEN}}` placeholders, filled in by the
 `scaffoldProject` task above. Not compiled, not Kotlin — just data:
 `settings.gradle.kts.template`, `build.gradle.kts.template` (carries a
 `{{PROJECT_ROOT_BLOCK}}` token, empty for a legacy root-level layout or
-`projectRoot.set(file(".."))` for the `.oepm/` layout), `gradle.properties.template`,
+`projectRoot.set(file(".."))` for the `.pope/` layout), `gradle.properties.template`,
 `openedge-project.json.template`.
 
 ## `src/` — the plugin code and its tests
@@ -100,19 +100,19 @@ tests. Read that when you want the logic of one specific file.
 What follows here is only the orientation the runtime walkthroughs below
 need — how the pieces fit together, not what each file contains.
 
-- **`OepmPlugin.kt`** — the entry point. Its `apply()` runs once when a
-  project applies `id("io.github.erudys27.oepm")` and registers five
-  tasks: **`oepmInstall`** (resolve + install dependencies;
-  `-PoepmAdd=<package>[:<versionSpec>]` adds one in the same step),
-  **`oepmUninstall`** (`-PoepmUninstall=<package>` — remove one
-  dependency, re-resolve what's left, and clean up its `oepm_packages/`/
-  `oepm.lock`/`buildPath` entries, same cleanup `oepmPrune` uses),
-  **`oepmPropath`** (print the PROPATH from `buildPath`'s `"source"`
-  entries; `-PoepmIncludeTests` / `oepm propath --tests` appends `"test"`
-  entries), **`oepmRegistryAdd`** (append to `oepm-registries.properties`),
-  **`oepmPrune`** (`oepm prune [--dry-run]` — remove `oepm_packages/` and
+- **`PopePlugin.kt`** — the entry point. Its `apply()` runs once when a
+  project applies `id("io.github.balticamadeus.pope")` and registers five
+  tasks: **`popeInstall`** (resolve + install dependencies;
+  `-PpopeAdd=<package>[:<versionSpec>]` adds one in the same step),
+  **`popeUninstall`** (`-PpopeUninstall=<package>` — remove one
+  dependency, re-resolve what's left, and clean up its `pope_packages/`/
+  `pope.lock`/`buildPath` entries, same cleanup `popePrune` uses),
+  **`popePropath`** (print the PROPATH from `buildPath`'s `"source"`
+  entries; `-PpopeIncludeTests` / `pope propath --tests` appends `"test"`
+  entries), **`popeRegistryAdd`** (append to `pope-registries.properties`),
+  **`popePrune`** (`pope prune [--dry-run]` — remove `pope_packages/` and
   `buildPath` entries no longer in the resolved graph). It also defines
-  `OepmExtension`, the `oepm {}` block: `projectRoot`, `registryRoot`,
+  `PopeExtension`, the `pope {}` block: `projectRoot`, `registryRoot`,
   `cacheDir`, and the `registries {}` container.
 - **`manifest/`** — reads and writes `openedge-project.json`
   (`ManifestReader` / `ManifestWriter` / `Manifest`), infers a missing
@@ -130,24 +130,24 @@ need — how the pieces fit together, not what each file contains.
   transitively, failing loudly on version conflicts, circular
   dependencies, and real-namespace collisions.
 - **`lock/` + `integrity/`** — `DirectoryHash` content-hashes an installed
-  package, `IntegrityChecker` compares it against `oepm.lock`,
+  package, `IntegrityChecker` compares it against `pope.lock`,
   `LockfileReader` reads the existing lock.
 - **`propath/PropathGenerator.kt`** — pure function: source roots →
   absolute paths.
 - **`version/SemVer.kt`** — `SemVer` (parse/compare `X.Y.Z`) and
   `CaretRange` (`^X.Y.Z` matching).
 
-## Root `oepm` / `oepm.bat`, `cli/`, and `oepm-init` — the command-line layer
+## Root `pope` / `pope.bat`, `cli/`, and `pope-init` — the command-line layer
 
 Not Kotlin or Gradle files themselves, but worth including since they're
 what you actually type:
 
-- **`oepm`** (bash) / **`oepm.bat`** (Windows) — thin scripts, scaffolded
-  into *each* project by `scaffoldProject`, that translate `oepm install`/
-  `oepm propath`/`oepm registry add` into the equivalent `./gradlew`
+- **`pope`** (bash) / **`pope.bat`** (Windows) — thin scripts, scaffolded
+  into *each* project by `scaffoldProject`, that translate `pope install`/
+  `pope propath`/`pope registry add` into the equivalent `./gradlew`
   calls. Find their target project by their own file location, so they
   work with zero global setup.
-- **`cli/oepm`** / **`cli/oepm.bat`** — the same commands, but meant to be
+- **`cli/pope`** / **`cli/pope.bat`** — the same commands, but meant to be
   installed *once* (added to `PATH`) and reused across every project.
   Find their target project by walking upward from your current
   directory looking for `openedge-project.json` — the same way
@@ -155,29 +155,29 @@ what you actually type:
   have exactly one copy on `PATH`.
 - **`cli/install.sh`** / **`cli/install.ps1`** — one-time, idempotent
   setup that adds `cli/` to `PATH`.
-- **`oepm-init`** / **`oepm-init.bat`** — interactive wrapper: prompts for
+- **`pope-init`** / **`pope-init.bat`** — interactive wrapper: prompts for
   registries, calls `scaffoldProject` against your current directory, and
   offers to run the `cli/install` script too.
 
-## Step by step: `oepm install ba.calculator`
+## Step by step: `pope install ba.calculator`
 
 Say a consumer project has `registries { create("ba") { ... } }`
 configured and declares `"ba.calculator": "^1.0.2"`. Here's roughly what
 happens:
 
-1. **`oepm`/`oepm.bat`/`cli/oepm`** forwards to
-   `gradlew oepmInstall "-PoepmAdd=ba.calculator"` (or with no `-PoepmAdd`
-   at all, for a plain `oepm install` re-resolving what's already
+1. **`pope`/`pope.bat`/`cli/pope`** forwards to
+   `gradlew popeInstall "-PpopeAdd=ba.calculator"` (or with no `-PpopeAdd`
+   at all, for a plain `pope install` re-resolving what's already
    declared).
 2. **`gradlew`** launches the pinned Gradle version and runs the
-   `oepmInstall` task.
-3. In **`OepmPlugin.kt`**'s `oepmInstall` body:
+   `popeInstall` task.
+3. In **`PopePlugin.kt`**'s `popeInstall` body:
    a. Reads `openedge-project.json` via **`ManifestReader.kt`**.
    b. Builds the configured `Registry` — merging `registries{}` and
-      `oepm-registries.properties` entries into one
+      `pope-registries.properties` entries into one
       **`PrefixRoutingRegistry.kt`** (or falling back to
       **`LocalDirectoryRegistry.kt`** if neither is configured).
-   c. If `-PoepmAdd` had no explicit `:versionSpec`, looks up the package
+   c. If `-PpopeAdd` had no explicit `:versionSpec`, looks up the package
       via the registry's `findAny` to pick whatever version exists and
       turns it into a caret range. Nothing written to disk yet.
    d. Hands the full dependency set to **`DependencyResolver.kt`**, which
@@ -189,43 +189,43 @@ happens:
       conflicts, circular dependencies, and namespace collisions along
       the way.
    e. Each resolved package is hashed (**`DirectoryHash.kt`**) and
-      checked against `oepm.lock`'s existing entry for that version
+      checked against `pope.lock`'s existing entry for that version
       (**`IntegrityChecker.kt`**) *before* anything is copied — a tampered
       or force-moved tag fails loudly here, first.
    f. Each resolved package's source is copied into
-      `oepm_packages/<installSubpath>/src` — nested by registry prefix
-      (`oepm_packages/ba/calculator/src`) or under `_direct/` for a
+      `pope_packages/<installSubpath>/src` — nested by registry prefix
+      (`pope_packages/ba/calculator/src`) or under `_direct/` for a
       direct-source dependency, overwriting whatever was there before.
    g. Only now, because resolution succeeded, does
       **`DependenciesUpdater.kt`** write the new dependency into
       `openedge-project.json`. If any earlier step failed, this write
       never happens.
-   h. `oepm.lock` is written from scratch: every resolved package's
+   h. `pope.lock` is written from scratch: every resolved package's
       version, cache source path, and integrity hash.
    i. **`BuildPathUpdater.kt`** adds each resolved package's
-      `oepm_packages/.../src` path to `buildPath`, if not already there.
+      `pope_packages/.../src` path to `buildPath`, if not already there.
    j. Gradle prints a summary line: how many dependencies were resolved.
 
-## Step by step: `oepm propath`
+## Step by step: `pope propath`
 
-1. **`oepm`/`oepm.bat`/`cli/oepm`** forwards to `gradlew oepmPropath`
-   (plain `oepm propath`) or `gradlew oepmPropath -PoepmIncludeTests`
-   (`oepm propath --tests`).
+1. **`pope`/`pope.bat`/`cli/pope`** forwards to `gradlew popePropath`
+   (plain `pope propath`) or `gradlew popePropath -PpopeIncludeTests`
+   (`pope propath --tests`).
 2. **`gradlew`** launches Gradle, applying the plugin the same way as
-   above, registering the `oepmPropath` task.
-3. In **`OepmPlugin.kt`**'s `oepmPropath` body:
+   above, registering the `popePropath` task.
+3. In **`PopePlugin.kt`**'s `popePropath` body:
    a. Reads `openedge-project.json` via **`ManifestReader.kt`** — this
-      includes whatever `buildPath` was last written by `oepmInstall`,
+      includes whatever `buildPath` was last written by `popeInstall`,
       split into `sourceRoots` (`type: "source"`) and `testRoots`
       (`type: "test"`).
    b. Calls **`PropathGenerator.kt`**, which turns `sourceRoots` (and, if
-      `-PoepmIncludeTests` was passed, `testRoots` too, appended after)
+      `-PpopeIncludeTests` was passed, `testRoots` too, appended after)
       into absolute folder paths. No files read or written beyond the
       manifest — a pure, in-memory transformation.
    c. Gradle prints the resulting list of absolute paths, one per line —
       that's the PROPATH you'd feed to the ABL compiler/IDE.
 
-Note that `oepmPropath` never re-resolves or re-copies anything — it just
+Note that `popePropath` never re-resolves or re-copies anything — it just
 reports what `buildPath` already says. If you've added a dependency to
-`openedge-project.json` by hand without running `oepm install`, its
-source won't be in `oepm_packages/` yet and it won't show up here either.
+`openedge-project.json` by hand without running `pope install`, its
+source won't be in `pope_packages/` yet and it won't show up here either.

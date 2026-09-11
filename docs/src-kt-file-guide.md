@@ -1,30 +1,30 @@
 # `src/` Kotlin file guide
 
-A file-by-file reference for everything under `oepm-tool/src/`, written for
+A file-by-file reference for everything under `pope/src/`, written for
 someone new to the codebase. For each file: what it is, the important
 types/functions inside it, and how it connects to the rest.
 
-If you want the runtime story ("what happens when I type `oepm install`")
+If you want the runtime story ("what happens when I type `pope install`")
 rather than a per-file list, read `docs/spec/kotlin-gradle-files.md`'s
 walkthrough sections instead. This doc is the reference; that one is the tour.
 
 ## The big picture
 
-`oepm` is a Gradle plugin. One project builds one JAR. Another ABL project
-applies that JAR and gains four Gradle tasks: `oepmInstall`, `oepmPropath`,
-`oepmPrune`, `oepmRegistryAdd`.
+`pope` is a Gradle plugin. One project builds one JAR. Another ABL project
+applies that JAR and gains four Gradle tasks: `popeInstall`, `popePropath`,
+`popePrune`, `popeRegistryAdd`.
 
 The code is split into small single-purpose packages under
-`src/main/kotlin/oepm/`:
+`src/main/kotlin/pope/`:
 
 | Package | Responsibility |
 |---|---|
-| `oepm` (root) | The plugin entry point and the four task definitions |
+| `pope` (root) | The plugin entry point and the four task definitions |
 | `manifest/` | Read and write a project's `openedge-project.json` |
 | `registry/` | Given a package name + version range, find the package |
 | `fetch/` | Actually pull a package's files down with `git` |
 | `resolver/` | Walk the whole dependency graph, transitively |
-| `lock/` + `integrity/` | Write `oepm.lock` and detect tampered packages |
+| `lock/` + `integrity/` | Write `pope.lock` and detect tampered packages |
 | `propath/` | Turn source roots into an ABL PROPATH |
 | `version/` | Parse `X.Y.Z` and match `^X.Y.Z` ranges |
 
@@ -34,25 +34,25 @@ Data flows roughly left to right: `manifest` tells you what is wanted,
 
 ---
 
-## `src/main/kotlin/oepm/` — the plugin
+## `src/main/kotlin/pope/` — the plugin
 
-### `OepmPlugin.kt`
+### `PopePlugin.kt`
 
 The entry point. Everything starts here.
 
-- **`class OepmPlugin : Plugin<Project>`** — Gradle instantiates this and
+- **`class PopePlugin : Plugin<Project>`** — Gradle instantiates this and
   calls `apply(project)` once when a build script does
-  `id("io.github.erudys27.oepm")`. `apply()` registers the four tasks and
-  creates the `oepm { }` configuration block.
-- **`abstract class OepmExtension`** — the `oepm { }` block you can put in a
+  `id("io.github.balticamadeus.pope")`. `apply()` registers the four tasks and
+  creates the `pope { }` configuration block.
+- **`abstract class PopeExtension`** — the `pope { }` block you can put in a
   consumer's `build.gradle.kts`. Properties:
   - `projectRoot` — where the ABL project actually lives. Defaults to the
     directory holding `build.gradle.kts`; set to `file("..")` when Gradle's
-    files sit in a `.oepm/` subfolder.
+    files sit in a `.pope/` subfolder.
   - `registryRoot` — root folder for the old single-folder local registry
     (the fallback registry).
   - `cacheDir` — where fetched packages are cached. Defaults to
-    `~/.oepm/cache`. Override with `-PoepmCacheDir=...`.
+    `~/.pope/cache`. Override with `-PpopeCacheDir=...`.
   - `registries { }` — a named container of `GitRegistrySpec` entries.
 - **`abstract class GitRegistrySpec`** — one `registries { }` entry. `name`
   is just a DSL label; `prefix` (e.g. `"ba."`) is the real routing key,
@@ -61,32 +61,32 @@ The entry point. Everything starts here.
 - **The four `project.tasks.register(...)` blocks** — each defines one
   task's `group`, `description`, and `doLast { }` body (the code that runs
   when you invoke the task):
-  - **`oepmInstall`** — reads the manifest, builds the `Registry`, resolves
+  - **`popeInstall`** — reads the manifest, builds the `Registry`, resolves
     the full graph via `DependencyResolver`, integrity-checks each package
-    against `oepm.lock` *before* copying anything, copies each package into
-    `oepm_packages/<subpath>/src`, then writes `oepm.lock`, updates
-    `dependencies` (only if `-PoepmAdd` was used), and updates `buildPath`.
+    against `pope.lock` *before* copying anything, copies each package into
+    `pope_packages/<subpath>/src`, then writes `pope.lock`, updates
+    `dependencies` (only if `-PpopeAdd` was used), and updates `buildPath`.
     Order matters: nothing touches disk until resolution has fully
     succeeded.
-  - **`oepmPropath`** — reads the manifest, calls `PropathGenerator`,
+  - **`popePropath`** — reads the manifest, calls `PropathGenerator`,
     prints the resulting absolute paths. Read-only.
-  - **`oepmPrune`** — re-resolves the graph the same way `oepmInstall`
-    does, then deletes any `oepm_packages/` folder and `buildPath` entry
-    that is no longer part of that graph. `-PoepmDryRun` reports without
+  - **`popePrune`** — re-resolves the graph the same way `popeInstall`
+    does, then deletes any `pope_packages/` folder and `buildPath` entry
+    that is no longer part of that graph. `-PpopeDryRun` reports without
     deleting.
-  - **`oepmRegistryAdd`** — appends one entry to
-    `oepm-registries.properties` via `RegistriesPropertiesFile.add`.
+  - **`popeRegistryAdd`** — appends one entry to
+    `pope-registries.properties` via `RegistriesPropertiesFile.add`.
 - **Private helper functions at the bottom of the file:**
   - `buildRegistry(extension)` — merges `registries { }` (from the build
-    script) and `oepm-registries.properties` (from the CLI) into a single
+    script) and `pope-registries.properties` (from the CLI) into a single
     `PrefixRoutingRegistry`. A prefix declared twice in either source is an
     error. Falls back to `LocalDirectoryRegistry` only when both sources
     are empty.
-  - `findStaleOepmPackagesDirs(...)` / `removeNowEmptyAncestors(...)` —
-    used by `oepmPrune` to find `src` folders under `oepm_packages/` that
+  - `findStalePopePackagesDirs(...)` / `removeNowEmptyAncestors(...)` —
+    used by `popePrune` to find `src` folders under `pope_packages/` that
     are not in the expected set, and to clean up emptied-out parent
     folders afterward.
-  - `resolveAddSpec(addSpec, registry)` — parses `-PoepmAdd=name[:range]`.
+  - `resolveAddSpec(addSpec, registry)` — parses `-PpopeAdd=name[:range]`.
     With no `:range`, it calls `registry.findAny(name)` to discover a
     version and pins it as `^version`.
 
@@ -127,7 +127,7 @@ Pure data. No logic.
   and will not serialize keys in a stable order, so this writes a fixed
   key order (`name`, `version`, `oeversion`, `package_name`,
   `dependencies`, `buildPath`, then anything else) with 2-space indent.
-- Every oepm code path that writes the manifest goes through here.
+- Every pope code path that writes the manifest goes through here.
 
 ### `manifest/PackageNameInferrer.kt`
 
@@ -146,10 +146,10 @@ Pure data. No logic.
   - `ensureSourceEntries(manifestFile, paths)` — adds each path as a
     `{ type: "source", path: ... }` entry to `buildPath` if not already
     present. Additive only; never removes or reorders, so hand edits
-    survive. Called at the end of `oepmInstall`.
-  - `pruneStaleOepmPackagesEntries(manifestFile, expectedPaths, dryRun)` —
-    the opposite, for `oepmPrune`. Removes only `"source"` entries whose
-    path starts with `"oepm_packages/"` and is not in `expectedPaths`.
+    survive. Called at the end of `popeInstall`.
+  - `pruneStalePopePackagesEntries(manifestFile, expectedPaths, dryRun)` —
+    the opposite, for `popePrune`. Removes only `"source"` entries whose
+    path starts with `"pope_packages/"` and is not in `expectedPaths`.
     Returns the removed paths; `dryRun` computes without writing.
 
 ### `manifest/DependenciesUpdater.kt`
@@ -157,7 +157,7 @@ Pure data. No logic.
 - **`object DependenciesUpdater`**, one public
   `addDependency(manifestFile, packageName, versionSpec)`.
 - Adds/overwrites one entry in the manifest's `dependencies` map on disk.
-  This is what `-PoepmAdd=...` uses instead of a hand edit. Only called
+  This is what `-PpopeAdd=...` uses instead of a hand edit. Only called
   after resolution succeeds.
 
 ### `propath/PropathGenerator.kt`
@@ -179,7 +179,7 @@ Pure data. No logic.
   `sourceDir` (the folder to copy onto PROPATH), `projectDir` (the
   package's own root, where *its* `openedge-project.json` lives, needed
   for transitive resolution), and `installSubpath` (a cosmetic hint for
-  where under `oepm_packages/` this should nest, e.g. `"ba/calculator"`;
+  where under `pope_packages/` this should nest, e.g. `"ba/calculator"`;
   `null` means use the package name directly).
 
 ### `registry/LocalDirectoryRegistry.kt`
@@ -218,7 +218,7 @@ Pure data. No logic.
   owns no packages itself. It routes each package name to the delegate
   registry whose prefix matches, longest prefix wins.
 - No matching prefix is a loud error, never a silent fallback.
-- This is the registry `oepmInstall` normally uses.
+- This is the registry `popeInstall` normally uses.
 
 ### `registry/PackageMatcher.kt`
 
@@ -234,7 +234,7 @@ Pure data. No logic.
 - **`data class RegistryFileEntry`** — `name`, `prefix`, `catalogUrl`,
   `catalogRef?`.
 - **`object RegistriesPropertiesFile`** — reads and appends
-  `oepm-registries.properties`, the CLI-editable alternative to the
+  `pope-registries.properties`, the CLI-editable alternative to the
   `registries { }` DSL. One property per field, namespaced by registry
   name:
   ```
@@ -245,7 +245,7 @@ Pure data. No logic.
     half-declared entry.
   - `add(file, name, prefix, catalogUrl)` — appends only, never rewrites
     existing lines; refuses a duplicate name or prefix. Used by
-    `oepmRegistryAdd`.
+    `popeRegistryAdd`.
 
 ### `fetch/GitCli.kt`
 
@@ -303,23 +303,23 @@ Pure data. No logic.
 
 - **`data class LockedPackage`** — `version`, `integrity`.
 - **`object LockfileReader`**, one function `read(file): Map<String, LockedPackage>`.
-- Reads the existing `oepm.lock`'s `resolved` object, keyed by package
+- Reads the existing `pope.lock`'s `resolved` object, keyed by package
   name. Missing file returns an empty map.
 
 ### `lock/IntegrityChecker.kt`
 
 - **`object IntegrityChecker`**, one function
   `verify(packageName, version, freshIntegrity, existingLock)`.
-- If `oepm.lock` already has this package at this exact version and the
+- If `pope.lock` already has this package at this exact version and the
   freshly computed hash differs, it throws. This catches a registry
   serving different content for an already-locked version, e.g. a git tag
-  force-moved. Called by `oepmInstall` *before* anything is copied into
-  `oepm_packages/`.
+  force-moved. Called by `popeInstall` *before* anything is copied into
+  `pope_packages/`.
 
 ### `integrity/DirectoryHash.kt`
 
 - **`object DirectoryHash`**, one function `hash(dir): String`.
-- Content hash of a resolved package's source tree, for `oepm.lock`'s
+- Content hash of a resolved package's source tree, for `pope.lock`'s
   `integrity` field. Modeled on Go's `dirhash.Hash1`: SHA-256 each file,
   build a manifest of `"<sha256>  <relative-path>"` lines sorted by path,
   then SHA-256 that manifest. Independent of walk order and OS path
@@ -341,7 +341,7 @@ Two small related pieces in one file.
 
 ---
 
-## `src/test/kotlin/oepm/` — unit tests
+## `src/test/kotlin/pope/` — unit tests
 
 One test file per main file, in the same package layout. Each tests its
 counterpart in isolation, using real temp directories and real local git
@@ -353,7 +353,7 @@ repos where needed, with no Gradle build involved.
 | `manifest/ManifestReaderTest.kt` | Parsing `openedge-project.json`, `buildPath` splitting, `package_name` auto-infer and write-back, dependency-shape errors |
 | `manifest/ManifestWriterTest.kt` | Fixed key order and indentation of written manifests |
 | `manifest/PackageNameInferrerTest.kt` | Namespace extraction from `.cls` files; failure on disagreement or no matches |
-| `manifest/BuildPathUpdaterTest.kt` | Additive `ensureSourceEntries`; selective `pruneStaleOepmPackagesEntries` and its dry-run |
+| `manifest/BuildPathUpdaterTest.kt` | Additive `ensureSourceEntries`; selective `pruneStalePopePackagesEntries` and its dry-run |
 | `manifest/DependenciesUpdaterTest.kt` | Adding a `dependencies` entry without disturbing the rest of the file |
 | `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `installSubpath`, error messages |
 | `registry/LocalDirectoryRegistryTest.kt` | Folder-per-package discovery, version-range check, fallback behavior |
@@ -368,19 +368,19 @@ repos where needed, with no Gradle build involved.
 | `resolver/DependencyResolverTest.kt` | Transitive resolution, version/kind conflicts, circular-dependency detection, namespace-collision check |
 | `propath/PropathGeneratorTest.kt` | Source roots to absolute paths; `includeTests` appends test roots after |
 
-## `src/functionalTest/kotlin/oepm/` — functional tests
+## `src/functionalTest/kotlin/pope/` — functional tests
 
 These run the **real** plugin through a **real** throwaway Gradle build
 using Gradle's `TestKit`, not isolated function calls.
 
-- **`OepmPluginFunctionalTest.kt`** — applies the plugin via `includeBuild`
+- **`PopePluginFunctionalTest.kt`** — applies the plugin via `includeBuild`
   + `withPluginClasspath()`, using this repo's own fixture packages under
   `src/functionalTest/resources/fixtures/`, and actually runs
-  `oepmInstall` / `oepmPropath` / `oepmRegistryAdd`, asserting on real
+  `popeInstall` / `popePropath` / `popeRegistryAdd`, asserting on real
   task output and real files on disk. Covers transitive resolution,
   version conflicts, the one-step add-and-install flow, merged
-  `registries{}` + properties-file config, `oepm_packages/` nesting by
-  registry prefix vs. direct-source, and the `.oepm/` layout where
+  `registries{}` + properties-file config, `pope_packages/` nesting by
+  registry prefix vs. direct-source, and the `.pope/` layout where
   `projectRoot` points one level up.
 - **`PublishedPluginFunctionalTest.kt`** — proves the plugin can be applied
   the way a real separate consumer would: by plugin id + version resolved

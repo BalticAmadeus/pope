@@ -49,14 +49,14 @@ Background facts that informed the ADRs. Not a design doc itself — see
 - Progress's official OpenEdge DevOps Framework — Gradle-based (JVM).
 - Community shops already use Ivy-resolved dependencies to hand-craft a
   PROPATH, compile against it, package output into .pl files, and publish
-  to Artifactory — i.e., the workflow oepm should slot into or formalize,
+  to Artifactory — i.e., the workflow pope should slot into or formalize,
   not compete with.
 - Newer/emerging community tooling shows some drift toward Rust
   (tree-sitter grammar, a from-scratch Rust LSP) and TypeScript (VS Code
   extension layer), but no existing precedent for Go specifically.
 - `openedge-project.json` (used by vscode-abl) already carries `name`,
   `version`, and a `buildPath` propath entry intended for future
-  dependency management — worth aligning with once oepm's schema is
+  dependency management — worth aligning with once pope's schema is
   stable (see docs/spec/manifest-schema.md).
 - Source: [vscode-abl GitHub](https://github.com/vscode-abl/vscode-abl),
   [openedge-project.json discussion](https://github.com/orgs/vscode-abl/discussions/20),

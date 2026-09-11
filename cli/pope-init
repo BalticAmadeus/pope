@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Thin forwarder so "pope-init" is reachable once cli/ is on PATH. The
+# real script (and its dependency on gradlew) lives at pope's own
+# root, one level up from here - NOT copied/duplicated, just forwarded to,
+# so there's only ever one real implementation to keep in sync. Safe to
+# put cli/ on PATH the way the root itself deliberately isn't (see
+# cli/pope's own comment) - this script has no "which project" ambiguity
+# to get wrong, it just execs the real pope-init in place, preserving
+# your actual working directory.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pope-init" "$@"

@@ -17,7 +17,7 @@ to hang a "package" concept on.
 
 ## Decision
 
-v1 of oepm resolves, versions, and distributes OO ABL packages only: a
+v1 of pope resolves, versions, and distributes OO ABL packages only: a
 directory tree of `.cls`/interface/enum files whose layout mirrors a
 dotted namespace, plus a manifest. Procedural code is out of scope for v1.
 
@@ -30,10 +30,10 @@ dotted namespace, plus a manifest. Procedural code is out of scope for v1.
   component after a period as another directory level. The manifest
   schema and naming conventions must respect this.
 - User-defined package names cannot start with `Progress` — reserved by
-  the language itself. oepm should mirror this pattern for its own
+  the language itself. pope should mirror this pattern for its own
   reserved namespaces if any are introduced later.
 - A large amount of existing OpenEdge codebases are procedural and get no
-  benefit from oepm v1. This is an accepted, explicit limitation, not an
+  benefit from pope v1. This is an accepted, explicit limitation, not an
   oversight — see README "Scope for v1."
 - Procedural support, if added later, will likely be a lesser-guaranteed
   "loose bundle" mechanism (a versioned directory added to PROPATH) rather
