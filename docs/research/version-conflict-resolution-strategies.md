@@ -6,8 +6,8 @@ depending on both `calculator-one-package` and `calculator-two-package`,
 which wanted incompatible ranges of `example.greeter`) and the resulting
 question: must a diamond-dependency version conflict always be a hard
 failure, or do other ecosystems have a better answer? That demo tree is
-gone with the repo split, but oepm's current behavior
-(`oepm/resolver/DependencyResolver`) is unchanged — it fails loudly. This
+gone with the repo split, but pope's current behavior
+(`pope/resolver/DependencyResolver`) is unchanged — it fails loudly. This
 doc records the alternatives considered, for a future ADR if this is ever
 revisited.
 
@@ -24,7 +24,7 @@ that fact once it's true, not a way of making it not be true:
   by giving each caller its own "slot" (nesting, versioned linker
   identity, a different package name) so there's never actually a shared
   resource to fight over. Only options 1 and 2 need platform support
-  oepm/ABL doesn't have; option 5 is a naming convention that only helps
+  pope/ABL doesn't have; option 5 is a naming convention that only helps
   future packages, not ones already colliding.
 - Options 3 and 7 **pick a caller to silently or semi-silently disappoint**
   and hope the deviation doesn't matter in practice. Sometimes it doesn't.
@@ -47,19 +47,19 @@ maintainer action, not something a resolver can do.
 
 ## At a glance
 
-| # | Option | For oepm? |
+| # | Option | For pope? |
 |---|---|---|
 | 1 | Physical side-by-side install (npm) | **Not usable** — needs per-directory isolation ABL/PROPATH doesn't have |
 | 2 | Versioned identity, side by side (C++) | **Not usable** — same wall as #1, just at the linker level |
 | 3 | Auto-pick a winner (Maven/Gradle) | **Usable, but risky** — silent, can compile against an untested version |
 | 4 | Manual override (Yarn/npm/pnpm) | **Usable — best fit if this is ever picked up** |
 | 5 | Distinct identity per breaking version (OS packages) | **Usable, but convention-only** — prevention, not a resolver mechanism, doesn't help already-colliding packages |
-| 6 | Full-graph constraint solving (Cargo, Bundler) | **Not useful yet** — no payoff until oepm has a multi-version registry |
+| 6 | Full-graph constraint solving (Cargo, Bundler) | **Not useful yet** — no payoff until pope has a multi-version registry |
 | 7 | Non-fatal warning, proceed anyway (npm peerDeps) | **Usable, but likely wrong fit** — ABL has no runtime check to catch what "proceeding anyway" silently broke |
 
 ## The options
 
-### 1. Physical side-by-side install (npm) — not usable for oepm
+### 1. Physical side-by-side install (npm) — not usable for pope
 
 Each package gets its own nested `node_modules/`, so two different
 versions of the same package can genuinely coexist on disk at once.
@@ -68,7 +68,7 @@ ancestor's `node_modules` in turn, so *which* version a given file gets
 depends on where in the tree it's resolving from — there's no single
 global answer, and there doesn't need to be one.
 
-**Not available to oepm.** PROPATH is one flat, ordered, session-global
+**Not available to pope.** PROPATH is one flat, ordered, session-global
 list (see [propath-generation.md](../spec/propath-generation.md)) — there
 is no per-directory scoping mechanism in ABL the way Node's `require()`
 algorithm has. Two classes can't both be named
@@ -77,7 +77,7 @@ already the stated reason `docs/spec/lockfile-format.md` rules out an
 npm-style "install both" escape hatch — not a policy choice, a platform
 constraint.
 
-### 2. Versioned identity, side by side (C++ shared libraries) — not usable for oepm
+### 2. Versioned identity, side by side (C++ shared libraries) — not usable for pope
 
 `.so`/`.dll` files can carry a version in their SONAME (e.g. `libfoo.so.1`
 vs. `libfoo.so.2`), so multiple major versions can be installed on a
@@ -87,12 +87,12 @@ needs by that distinct name.
 This is really the same underlying trick as option 1 — give each version
 a distinct *identity* (filename/symbol name in C++, directory position in
 npm) so they never collide — just implemented at the linker level instead
-of the filesystem-tree level. It hits the same wall for oepm: ABL classes
+of the filesystem-tree level. It hits the same wall for pope: ABL classes
 are identified by their fully-qualified namespace path, so
 `example.greeter.Greeter` can't be two different things at once on one
 PROPATH unless the *package itself* encodes the version into its
 namespace (e.g. `example.greeter.v1.Greeter` vs.
-`example.greeter.v2.Greeter`). That's not something oepm's resolver could
+`example.greeter.v2.Greeter`). That's not something pope's resolver could
 impose automatically — it would be a naming convention individual package
 authors would have to opt into, and nothing currently enforces or even
 suggests it.
@@ -101,14 +101,14 @@ suggests it.
 
 Gradle's own dependency resolution (the thing
 [ADR-0001](../decisions/0001-implementation-language.md) originally
-wanted oepm to reuse) doesn't error on a version conflict by default — it
+wanted pope to reuse) doesn't error on a version conflict by default — it
 picks the **highest requested version** among the conflicting
 requirements and proceeds, only failing if something explicitly opts into
 a "strict" constraint. Maven's default strategy is similar in spirit
 ("nearest wins" by tree depth, rather than highest, but the principle —
 pick one automatically instead of failing — is the same).
 
-**Compatible with oepm's flat-PROPATH constraint** — it still produces
+**Compatible with pope's flat-PROPATH constraint** — it still produces
 exactly one final answer, same as today's hard-fail behavior, just chosen
 automatically instead of chosen by a human fixing the conflict by hand.
 The risk: silent. A package can end up compiled against a version its
@@ -129,7 +129,7 @@ The tool doesn't try to be clever; it just does what it's told, and the
 override is explicit, visible in the manifest, and reviewable in a code
 change like any other declared decision.
 
-**Compatible with oepm's flat-PROPATH constraint** (still one final
+**Compatible with pope's flat-PROPATH constraint** (still one final
 version) — and notably lower-risk than option 3, since nothing is
 *silently* chosen. The human who added the override is explicitly taking
 responsibility for verifying the forced version actually works for every
@@ -146,7 +146,7 @@ never actually a same-name conflict to resolve at the tooling level at
 all.
 
 This isn't a resolver strategy so much as an authoring convention that
-sidesteps the problem — and it's the same underlying lesson oepm already
+sidesteps the problem — and it's the same underlying lesson pope already
 adopted for a different problem: [ADR-0007](../decisions/0007-namespace-relative-includes.md)
 (namespace-relative includes) exists precisely because giving two things
 the same bare name and hoping resolution order sorts it out was the bug,
@@ -159,7 +159,7 @@ on package authors actually following it.
 
 ### 6. Full-graph constraint solving instead of greedy per-edge walking (Cargo, Bundler, Poetry, pub) — not useful yet
 
-`oepm/resolver/DependencyResolver` currently walks the graph depth-first
+`pope/resolver/DependencyResolver` currently walks the graph depth-first
 and fails the moment one edge conflicts with an already-resolved choice —
 the *order* dependencies happen to be declared in can determine whether a
 resolvable graph gets found (see the "which one gets checked first"
@@ -168,7 +168,7 @@ considers the whole graph's requirements together and searches for *any*
 assignment of versions that satisfies every constraint, backtracking past
 an early choice if it turns out to block a later one.
 
-**Only actually matters once oepm supports multiple versions per package
+**Only actually matters once pope supports multiple versions per package
 in the registry** — not implemented yet (see "Scope for v1" in
 README.md). With today's one-version-per-package-name registry,
 there is only ever one candidate to consider per name, so a solver and
@@ -202,7 +202,7 @@ entirely rather than resolving it.
 
 Revised take, now that more options are on the table: **option 4 (manual
 override) looks like the better fit than option 3 (auto-pick highest)**
-if oepm ever moves off hard-failing by default. It solves the same cases
+if pope ever moves off hard-failing by default. It solves the same cases
 option 3 would, without the silent-behavior risk — an override is
 something a human wrote down and can be reviewed, not something the
 resolver decided on its own. Option 5 (naming convention) costs nothing
@@ -211,7 +211,7 @@ resolver itself ends up doing, the same way ADR-0007 documents the
 include-naming convention. Option 6 (real solver) isn't worth the
 investment until multi-version registry support exists — it would be
 solving a problem that can't occur yet. Option 7 (warn-and-proceed) is
-an interesting third posture but probably the wrong fit for oepm
+an interesting third posture but probably the wrong fit for pope
 specifically: ABL doesn't have a mechanism to detect *at compile/run time*
 whether a version mismatch actually broke something the way JS's dynamic
 nature sometimes tolerates it, so "proceed anyway" risks being strictly

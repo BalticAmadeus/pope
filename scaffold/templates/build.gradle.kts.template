@@ -1,10 +1,10 @@
 plugins {
-    id("io.github.erudys27.oepm")
+    id("io.github.balticamadeus.pope")
 }
 
-oepm {{{PROJECT_ROOT_BLOCK}}
+pope {{{PROJECT_ROOT_BLOCK}}
 }
 
-// Registries live in oepm-registries.properties, at the ABL project root
-// (see projectRoot above, if set) - not here. See oepm-tool's README.md.
-// Run `oepm registry add <prefix> <url>` to add one.
+// Registries live in pope-registries.properties, at the ABL project root
+// (see projectRoot above, if set) - not here. See pope's README.md.
+// Run `pope registry add <prefix> <url>` to add one.

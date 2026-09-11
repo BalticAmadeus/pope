@@ -1,4 +1,4 @@
-# oepm - a package manager for Progress OpenEdge ABL
+# pope - a package manager for Progress OpenEdge ABL
 
 ## What this is
 
@@ -30,21 +30,21 @@ registries:
   whole graph, and **PROPATH namespace-collision detection** (two
   packages sharing a real ABL namespace fail loudly instead of silently
   shadowing each other).
-- **Integrity verification** - `oepm.lock` records a content hash per
+- **Integrity verification** - `pope.lock` records a content hash per
   package; a tag force-moved to different content fails loudly.
 - **`buildPath` test entries** - `type: "test"` is excluded from PROPATH
-  by default, included with `oepm propath --tests`. Never leaks from a
+  by default, included with `pope propath --tests`. Never leaks from a
   dependency into a consumer.
-- **`oepm prune [--dry-run]`** - removes `oepm_packages/`/`buildPath`
+- **`pope prune [--dry-run]`** - removes `pope_packages/`/`buildPath`
   entries no longer part of the resolved graph.
-- **`oepm uninstall <package>`** - removes a dependency and cleans up its
-  `oepm_packages/`/`oepm.lock`/`buildPath` entries in one step.
+- **`pope uninstall <package>`** - removes a dependency and cleans up its
+  `pope_packages/`/`pope.lock`/`buildPath` entries in one step.
 - Backward compatible: no `registries {}` configured falls back to a
   plain local-directory registry.
 
 See `docs/decisions/` for what's been decided and why. Still missing:
 include-collision linting, and real Gradle/Ivy-based resolution - version
-matching (`oepm/version/`) and graph resolution (`oepm/resolver/`) are
+matching (`pope/version/`) and graph resolution (`pope/resolver/`) are
 hand-written instead, a known deviation from ADR-0001 worth raising with
 the team before treating as settled.
 
@@ -53,25 +53,25 @@ the team before treating as settled.
 1. **Clone this repo.**
 2. **Wire up your ABL project** - from your project's own directory:
    ```
-   /path/to/oepm-tool/oepm-init      # oepm-init.bat on Windows
+   /path/to/pope/pope-init      # pope-init.bat on Windows
    ```
    You only need the full path the *first* time. It prompts for
    registries, scaffolds/patches your project non-destructively (safe to
    re-run), and offers to install the global CLI (step 3) - once that's
-   done, bare `oepm-init` works from anywhere, for this or any future
+   done, bare `pope-init` works from anywhere, for this or any future
    project. See `HANDOVER.md` and `docs/spec/kotlin-gradle-files.md` for
    what it actually does.
-3. **(Optional) Install the global CLI**, so `oepm install`/`uninstall`/
+3. **(Optional) Install the global CLI**, so `pope install`/`uninstall`/
    `propath`/`prune`/`registry add` work from any project without a
-   `./`/`.\` prefix - `oepm-init` offers to do this for you, or run it
+   `./`/`.\` prefix - `pope-init` offers to do this for you, or run it
    directly:
    ```
    cli/install.sh      # cli\install.ps1 on Windows
    ```
    One-time, idempotent. Open a new terminal afterward for `PATH` to
-   apply. This is `cli/oepm`, **not** the per-project `oepm`/`oepm.bat` -
+   apply. This is `cli/pope`, **not** the per-project `pope`/`pope.bat` -
    the per-project one finds its target by its own file location (works
-   with zero global setup, e.g. in CI); `cli/oepm` finds its target by
+   with zero global setup, e.g. in CI); `cli/pope` finds its target by
    walking up from your current directory, which is what makes it safe
    to put on `PATH`. Don't put a per-project copy on `PATH` instead - it
    would silently operate on wherever that file happens to live.
@@ -79,13 +79,13 @@ the team before treating as settled.
 ### Commands
 
 ```
-oepm-init                              wire up a new/existing project (interactive)
-oepm install                           resolve declared dependencies
-oepm install <package>[:<versionSpec>] add + resolve a dependency in one step
-oepm uninstall <package>               remove a dependency and clean up its files
-oepm propath [--tests]                 print the generated PROPATH
-oepm registry add [<prefix> <url>]     add a registry (interactive if omitted)
-oepm prune [--dry-run]                 remove oepm_packages/ entries no longer declared
+pope-init                              wire up a new/existing project (interactive)
+pope install                           resolve declared dependencies
+pope install <package>[:<versionSpec>] add + resolve a dependency in one step
+pope uninstall <package>               remove a dependency and clean up its files
+pope propath [--tests]                 print the generated PROPATH
+pope registry add [<prefix> <url>]     add a registry (interactive if omitted)
+pope prune [--dry-run]                 remove pope_packages/ entries no longer declared
 ```
 
 ## Creating a registry
@@ -126,9 +126,9 @@ your-package/
 }
 ```
 The folder structure under `src/` must mirror the class namespace - an
-ABL requirement, not an oepm one. Fold your org into `package_name`/the
+ABL requirement, not a pope one. Fold your org into `package_name`/the
 namespace (e.g. `yourorg.yourpackage`, not bare `yourpackage`) so it
-doesn't collide with someone else's package of the same name - oepm
+doesn't collide with someone else's package of the same name - pope
 doesn't enforce this itself, it only catches an actual collision at
 resolve time (see "PROPATH namespace-collision detection" above). Tag
 the repo (`git tag v1.0.0`) matching whatever `ref` a registry's
@@ -139,17 +139,17 @@ reference file points at.
 Two mergeable config sources - a prefix declared in both, or twice in
 one, is a duplicate-prefix error.
 
-**`oepm-registries.properties`** (project root, committed, CLI-mutable):
+**`pope-registries.properties`** (project root, committed, CLI-mutable):
 ```
 ba.prefix=ba.
 ba.catalogUrl=https://github.com/erudys27/registry-ba.git
 ```
-Add to it with `oepm registry add [<prefix> <url> [<name>]]` (interactive
+Add to it with `pope registry add [<prefix> <url> [<name>]]` (interactive
 if omitted).
 
 **`registries {}`** in `build.gradle.kts` (hand-authored):
 ```kotlin
-oepm {
+pope {
     registries {
         create("ba") {
             prefix.set("ba.")
@@ -163,6 +163,6 @@ A dependency like `"ba.calculator": "^1.0.0"` routes to whichever
 registry's prefix it starts with. See
 [openedge-package-manager](https://github.com/erudys27/openedge-package-manager)
 for a real, working example. If neither source has any entries,
-`oepmInstall` falls back to a plain local-directory registry
+`popeInstall` falls back to a plain local-directory registry
 (`registryRoot`).
 

@@ -1,4 +1,4 @@
-# Where the oepm plugin's source lives, for includeBuild during local dev.
-# Computed relative to wherever oepm-tool was actually cloned when this
+# Where the pope plugin's source lives, for includeBuild during local dev.
+# Computed relative to wherever pope was actually cloned when this
 # project was scaffolded. Override if you move either clone.
-oepmToolPath={{OEPM_TOOL_PATH}}
+popeToolPath={{POPE_TOOL_PATH}}

@@ -3,7 +3,7 @@ bin/
 .builder/
 .DS_Store
 Thumbs.db
-oepm_packages/
+pope_packages/
 *.log
 
 # OpenEdge session temp files
@@ -17,7 +17,7 @@ build/
 .kotlin/
 !gradle/wrapper/gradle-wrapper.jar
 
-# ./gradlew publish output when -PoepmPublishRepoUrl targets a local folder
+# ./gradlew publish output when -PpopePublishRepoUrl targets a local folder
 # outside build/ (e.g. a git-hosted-Maven-repo experiment) - disposable,
 # never meant to be committed.
 maven-repo/

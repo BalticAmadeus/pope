@@ -1,14 +1,14 @@
 pluginManagement {
-    // oepm isn't published anywhere reachable by coordinate yet, so this
+    // pope isn't published anywhere reachable by coordinate yet, so this
     // pulls the plugin straight from a separate clone of the tool repo
-    // (github.com/erudys27/oepm-tool) via a composite build. This file may
-    // live at the project root or, for projects using the .oepm/ layout,
-    // inside .oepm/ - either way oepmToolPath is a path to that clone,
+    // (github.com/BalticAmadeus/pope) via a composite build. This file may
+    // live at the project root or, for projects using the .pope/ layout,
+    // inside .pope/ - either way popeToolPath is a path to that clone,
     // relative to wherever this file itself sits.
-    // oepmToolPath (gradle.properties) controls where that clone is -
+    // popeToolPath (gradle.properties) controls where that clone is -
     // override it, or switch this to a published-plugin version
     // reference instead once that's set up for real.
-    includeBuild(providers.gradleProperty("oepmToolPath").getOrElse("{{OEPM_TOOL_PATH}}"))
+    includeBuild(providers.gradleProperty("popeToolPath").getOrElse("{{POPE_TOOL_PATH}}"))
 }
 
 rootProject.name = "{{ROOT_PROJECT_NAME}}"

@@ -7,7 +7,7 @@ links for depth.
 
 ## What this is
 
-`oepm` is a Gradle plugin that adds dependency management to Progress
+`pope` is a Gradle plugin that adds dependency management to Progress
 OpenEdge ABL projects — install packages from git-hosted registries,
 resolve transitive dependencies, generate PROPATH, all driven by a
 project's existing `openedge-project.json`. See README.md's "What this
@@ -16,26 +16,28 @@ is" / "Status" for the full pitch and what currently works end to end.
 ## The repos
 
 This used to be one monorepo; it's since split into five real, separate
-GitHub repos (all under `github.com/erudys27/`):
+GitHub repos. Four still live under `github.com/erudys27/`; this one
+(`pope`) moved to `github.com/BalticAmadeus/pope` when it went to org
+ownership:
 
 | Repo | What it is |
 |---|---|
-| **`oepm-tool`** (this repo) | The plugin itself — everything under `src/`, plus the CLI (`oepm`/`oepm.bat`, `cli/`), scaffolding (`scaffold/`, `oepm-init`), and docs. |
-| **`openedge-package-manager`** | The demo/consumer app — a real project that uses oepm, showing two registries, a transitive dependency, and a direct-source dependency, all live. Good place to see the tool actually being used. |
+| **`pope`** (this repo, `github.com/BalticAmadeus/pope`) | The plugin itself — everything under `src/`, plus the CLI (`pope`/`pope.bat`, `cli/`), scaffolding (`scaffold/`, `pope-init`), and docs. |
+| **`openedge-package-manager`** | The demo/consumer app — a real project that uses pope, showing two registries, a transitive dependency, and a direct-source dependency, all live. Good place to see the tool actually being used. |
 | **`registry-ba`**, **`registry-cw`** | Catalog registries — small repos holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo + tag. No package content lives in a registry itself. |
 | **`calculator`**, **`logger`**, **`greeter`** | Individual packages, each its own repo, each tagged per version. `calculator`/`logger` are referenced from the catalogs above; `greeter` is a direct-source dependency (no catalog entry at all). |
 
-## Repo layout (this repo, `oepm-tool`)
+## Repo layout (this repo, `pope`)
 
 ```
 docs/                             decisions/ (ADRs), spec/ (design docs), research/
-src/main/kotlin/oepm/             the plugin - see docs/spec/kotlin-gradle-files.md
-src/test/kotlin/oepm/             unit tests
-src/functionalTest/kotlin/oepm/   TestKit tests - run the real plugin
+src/main/kotlin/pope/             the plugin - see docs/spec/kotlin-gradle-files.md
+src/test/kotlin/pope/             unit tests
+src/functionalTest/kotlin/pope/   TestKit tests - run the real plugin
 scaffold/templates/               templates scaffoldProject renders
-oepm / oepm.bat                   per-project CLI, scaffolded into each project
+pope / pope.bat                   per-project CLI, scaffolded into each project
 cli/                              global CLI + its one-time install script
-oepm-init / oepm-init.bat         interactive project scaffolding wrapper
+pope-init / pope-init.bat         interactive project scaffolding wrapper
 build.gradle.kts                  plugin build config + the scaffoldProject task
 ```
 
@@ -43,17 +45,17 @@ The Gradle wrapper (`gradlew`/`gradlew.bat`) is checked in.
 
 ## One-time setup
 
-1. Clone `oepm-tool`.
-2. Run `./oepm-init` (`oepm-init.bat` on Windows) from inside whatever ABL
-   project you want to wire up to oepm — prompts for registries, sets
+1. Clone `pope`.
+2. Run `./pope-init` (`pope-init.bat` on Windows) from inside whatever ABL
+   project you want to wire up to pope — prompts for registries, sets
    everything up, and offers to install the global CLI too. Full detail
    (including the non-interactive path) in README.md's "Per-machine
    setup".
 3. If you skipped that prompt, `cli/install.sh` (`cli\install.ps1` on
    Windows) does the same PATH setup on its own — one-time, safe to
-   re-run. Once it's run, bare `oepm-init` also works from any directory
+   re-run. Once it's run, bare `pope-init` also works from any directory
    (a thin forwarder in `cli/`, not a copy — see README's "Per-machine
-   setup" for why it's not simply oepm-tool's whole root added to PATH).
+   setup" for why it's not simply pope's whole root added to PATH).
 
 To actually publish a package or stand up a new registry (not just
 consume one), see README.md's "Creating a registry" and "Publishing a
@@ -70,18 +72,18 @@ check` before every merge is on you.
 ## Commands you'll actually type
 
 ```
-oepm-init                              wire up a new/existing project (interactive)
-oepm install                           resolve declared dependencies
-oepm install <package>[:<versionSpec>] add + resolve a dependency in one step
-oepm uninstall <package>               remove a dependency and clean up its files
-oepm propath                           print the generated PROPATH
-oepm propath --tests                   ...also including buildPath's "test" entries
-oepm registry add [<prefix> <url>]     add a registry (interactive if omitted)
-oepm prune [--dry-run]                 remove oepm_packages/ entries no longer declared
+pope-init                              wire up a new/existing project (interactive)
+pope install                           resolve declared dependencies
+pope install <package>[:<versionSpec>] add + resolve a dependency in one step
+pope uninstall <package>               remove a dependency and clean up its files
+pope propath                           print the generated PROPATH
+pope propath --tests                   ...also including buildPath's "test" entries
+pope registry add [<prefix> <url>]     add a registry (interactive if omitted)
+pope prune [--dry-run]                 remove pope_packages/ entries no longer declared
 ```
 
-`oepm` here means whichever CLI applies — the per-project `./oepm`/`.\oepm.bat`
-that never needs anything installed globally, or the global `oepm` (once
+`pope` here means whichever CLI applies — the per-project `./pope`/`.\pope.bat`
+that never needs anything installed globally, or the global `pope` (once
 `cli/install` has run) that works from any project, any directory. See
 README.md's "Per-machine setup" for why there are two and when each
 applies — it matters, don't assume they're interchangeable by accident.
@@ -109,8 +111,8 @@ don't get re-litigated from scratch or assumed to be oversights:
 ## Where to read more
 
 - **`docs/spec/kotlin-gradle-files.md`** — the Gradle/build side (root
-  `.kts` scripts, wrapper, scaffold templates) plus the `oepm install` /
-  `oepm propath` runtime walkthroughs, written for someone new to
+  `.kts` scripts, wrapper, scaffold templates) plus the `pope install` /
+  `pope propath` runtime walkthroughs, written for someone new to
   Gradle/Kotlin. Read this to see how the pieces fit together.
 - **`docs/src-kt-file-guide.md`** — the per-file reference for the plugin
   code under `src/`: for each `.kt` file, the types/functions it contains
@@ -118,7 +120,7 @@ don't get re-litigated from scratch or assumed to be oversights:
   when you want the logic of one specific file.
 - **`docs/spec/manifest-schema.md`**, **`lockfile-format.md`**,
   **`propath-generation.md`** — the design specs for `openedge-project.json`,
-  `oepm.lock`, and PROPATH generation respectively.
+  `pope.lock`, and PROPATH generation respectively.
 - **`docs/decisions/`** — ADRs, one per real decision, numbered, with
   status. Read these when something in the code looks like an odd choice
   — it's very likely there's a reason written down here.

@@ -1,8 +1,8 @@
 # Manifest schema
 
-Status: implemented — single-file design: oepm-specific keys are added
-directly to `openedge-project.json` rather than a separate `oepm.json`.
-The key names/types below are what `oepm.manifest.Manifest` /
+Status: implemented — single-file design: pope-specific keys are added
+directly to `openedge-project.json` rather than a separate `pope.json`.
+The key names/types below are what `pope.manifest.Manifest` /
 `ManifestReader` / `ManifestWriter` actually read and write today; the
 open questions at the bottom are the only parts still unsettled. Depends on
 [ADR-0002](../decisions/0002-oo-abl-only-v1.md) (OO ABL only) and
@@ -17,9 +17,9 @@ config file, already carrying `name`, `version`, `oeversion`, and
 (the directory that itself represents the top of the OO ABL package
 namespace, per [ADR-0002](../decisions/0002-oo-abl-only-v1.md)).
 
-## Why one file instead of a separate oepm.json
+## Why one file instead of a separate pope.json
 
-A prior draft of this spec kept oepm's manifest in its own `oepm.json` to
+A prior draft of this spec kept pope's manifest in its own `pope.json` to
 avoid coupling early iteration to a file format owned by another project.
 That's no longer the plan: one file is preferable to two as long as it
 works correctly (no field collisions), and prototyping shows it can.
@@ -28,25 +28,25 @@ Two of `openedge-project.json`'s existing fields were checked for
 collision before deciding this:
 
 - **`name`** — the extension's existing `name` is a free-form project
-  label (e.g. `"calculator-package"`), but oepm requires this value to
+  label (e.g. `"calculator-package"`), but pope requires this value to
   exactly equal the OO ABL package namespace (e.g. `"example.calculator"`)
   for dependency resolution to work (a consumer's `dependencies` map is
   keyed by this value). These are genuinely different constraints on the
-  same field name, so oepm does **not** reuse `name` — it adds a separate
+  same field name, so pope does **not** reuse `name` — it adds a separate
   `package_name` key instead, leaving the extension's `name` untouched.
 - **`version`** — no equivalent conflict found; both the extension and
-  oepm mean "this package's version." Reused as-is, one field, no new key.
+  pope mean "this package's version." Reused as-is, one field, no new key.
 
 ## Fields
 
 | Field | Owner | Notes |
 |---|---|---|
-| `name` | vscode-abl extension (existing) | Free-form project label. Not read by oepm — do not assume it matches the namespace. |
-| `version` | shared (existing) | Semver. Reused directly by oepm; no separate version field. |
-| `oeversion` | vscode-abl extension (existing) | Target OpenEdge version. May end up doing double duty for an oepm min-version check — not confirmed, see open questions. |
-| `buildPath` | vscode-abl extension (existing) | Ordered list of `{type, path}` entries. `type: "source"` is what oepm reads as this package's own source roots (`Manifest.sourceRoots`) — oepm's generated entries for resolved dependencies are also always `"source"`, added into this same list (see [propath-generation.md](propath-generation.md) for the open question on ordering and on warning when a generated entry would shadow one already present here). `buildPath[0]` of type `"source"` also serves as `package_root` — see below, no separate field. `type: "test"` (`Manifest.testRoots`, decided 2026-09-03) is only ever read for *this* manifest's own PROPATH — `oepm propath --tests` includes it, plain `oepm propath` doesn't — and is never read at all when this manifest belongs to a dependency being fetched (`GitPackageFetcher`/`CatalogRegistry` only ever look at `sourceRoots`), so a dependency's own test folders can never end up copied into a consumer's `oepm_packages/` or referenced on a consumer's `buildPath`, regardless of the flag. Any other `type` value is read by nothing and simply ignored (forward-compatible with a future type, e.g. resources/images, which would need its own decision on whether/how it appears on PROPATH — not decided yet). |
-| `package_name` | oepm (new) | The OO ABL package namespace this manifest describes (e.g. `example.calculator`). No leading period-containing directory components (language constraint). Cannot start with `Progress` (reserved). Uniqueness within a single registry directory is enforced at resolve time (`LocalDirectoryRegistry.findAny` fails loudly if two folders declare the same `package_name`) — not enforced across separate registries. Independent of whatever key a *dependent* package uses to reference this one (see `dependencies` below) — a package's own `package_name` never needs a registry's routing prefix baked in. |
-| `dependencies` | oepm (new) | Map of dependency key → spec, one of two shapes (decided 2026-08-25, see `oepm.manifest.DependencySpec`): <br>**Registry** — a plain caret-range string (`"ba.calculator": "^1.0.0"`, unchanged since 2026-08-13). The key must already be a fully-qualified, registry-routed name (prefix included) — `oepm.registry.PrefixRoutingRegistry` can't route an unprefixed name. <br>**DirectSource** — `{ "repoUrl": "...", "ref": "v1.0.1" }` (new). Fetched by a plain git clone, no registry lookup at all — lets a package depend on another without either side needing a catalog entry. Always keyed by its own bare declared key, root-level or transitive — no inherited prefix (tried, then dropped 2026-08-26: inheriting the enclosing package's prefix made two *differently-routed* packages sharing the exact same direct-source dependency — e.g. a `ba.`-routed and a `cw.`-routed package both depending on the same `greeter` repo/ref — trip the `package_name`-collision check as a false positive, since they'd land on different inherited keys despite being the identical dependency. Keeping the bare key instead means they land on the *same* key and get correctly deduped by `DependencyResolver`'s existing repoUrl/ref-equality check, while two direct-source deps that are genuinely different things sharing a bare name are still caught — by that same repoUrl/ref mismatch, which is more precise than a namespace-based check). |
+| `name` | vscode-abl extension (existing) | Free-form project label. Not read by pope — do not assume it matches the namespace. |
+| `version` | shared (existing) | Semver. Reused directly by pope; no separate version field. |
+| `oeversion` | vscode-abl extension (existing) | Target OpenEdge version. May end up doing double duty for a pope min-version check — not confirmed, see open questions. |
+| `buildPath` | vscode-abl extension (existing) | Ordered list of `{type, path}` entries. `type: "source"` is what pope reads as this package's own source roots (`Manifest.sourceRoots`) — pope's generated entries for resolved dependencies are also always `"source"`, added into this same list (see [propath-generation.md](propath-generation.md) for the open question on ordering and on warning when a generated entry would shadow one already present here). `buildPath[0]` of type `"source"` also serves as `package_root` — see below, no separate field. `type: "test"` (`Manifest.testRoots`, decided 2026-09-03) is only ever read for *this* manifest's own PROPATH — `pope propath --tests` includes it, plain `pope propath` doesn't — and is never read at all when this manifest belongs to a dependency being fetched (`GitPackageFetcher`/`CatalogRegistry` only ever look at `sourceRoots`), so a dependency's own test folders can never end up copied into a consumer's `pope_packages/` or referenced on a consumer's `buildPath`, regardless of the flag. Any other `type` value is read by nothing and simply ignored (forward-compatible with a future type, e.g. resources/images, which would need its own decision on whether/how it appears on PROPATH — not decided yet). |
+| `package_name` | pope (new) | The OO ABL package namespace this manifest describes (e.g. `example.calculator`). No leading period-containing directory components (language constraint). Cannot start with `Progress` (reserved). Uniqueness within a single registry directory is enforced at resolve time (`LocalDirectoryRegistry.findAny` fails loudly if two folders declare the same `package_name`) — not enforced across separate registries. Independent of whatever key a *dependent* package uses to reference this one (see `dependencies` below) — a package's own `package_name` never needs a registry's routing prefix baked in. |
+| `dependencies` | pope (new) | Map of dependency key → spec, one of two shapes (decided 2026-08-25, see `pope.manifest.DependencySpec`): <br>**Registry** — a plain caret-range string (`"ba.calculator": "^1.0.0"`, unchanged since 2026-08-13). The key must already be a fully-qualified, registry-routed name (prefix included) — `pope.registry.PrefixRoutingRegistry` can't route an unprefixed name. <br>**DirectSource** — `{ "repoUrl": "...", "ref": "v1.0.1" }` (new). Fetched by a plain git clone, no registry lookup at all — lets a package depend on another without either side needing a catalog entry. Always keyed by its own bare declared key, root-level or transitive — no inherited prefix (tried, then dropped 2026-08-26: inheriting the enclosing package's prefix made two *differently-routed* packages sharing the exact same direct-source dependency — e.g. a `ba.`-routed and a `cw.`-routed package both depending on the same `greeter` repo/ref — trip the `package_name`-collision check as a false positive, since they'd land on different inherited keys despite being the identical dependency. Keeping the bare key instead means they land on the *same* key and get correctly deduped by `DependencyResolver`'s existing repoUrl/ref-equality check, while two direct-source deps that are genuinely different things sharing a bare name are still caught — by that same repoUrl/ref mismatch, which is more precise than a namespace-based check). |
 
 `db` was previously sketched as a field here (`none`/`required`) but is
 dropped entirely — [ADR-0003](../decisions/0003-db-deps-declared-not-managed.md)
@@ -77,7 +77,7 @@ could.
   },
   "buildPath": [
     { "type": "source", "path": "src" },
-    { "type": "source", "path": "oepm_packages/example.calculator/src" }
+    { "type": "source", "path": "pope_packages/example.calculator/src" }
   ]
 }
 ```
@@ -100,5 +100,5 @@ could.
   whichever one the filesystem happens to list first. Still open: this
   only catches the collision within one `registryRoot` — nothing stops
   two *separate* registries (or a registry and a hand-copied
-  `oepm_packages/` entry) from independently claiming the same
+  `pope_packages/` entry) from independently claiming the same
   `package_name`.

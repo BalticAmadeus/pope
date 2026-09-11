@@ -56,3 +56,9 @@ this name publicly — see the open item in the root README.
 ## Alternatives considered
 
 See "Candidates evaluated" above.
+
+## Update
+
+The project was later renamed again, from `oepm` to `pope`, when it moved
+to org ownership. See ADR-0009 for that rename; this ADR remains an
+accurate record of the `ppm` → `oepm` decision at the time it was made.
