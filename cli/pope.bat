@@ -131,6 +131,7 @@ if "%USE_SUBDIR%"=="1" (
 ) else (
     call "%GRADLEW%" %*
 )
+echo.
 goto :eof
 
 :usage

@@ -69,7 +69,7 @@ if %ERRORLEVEL%==0 (
     echo (global pope CLI is already set up - "pope install" already works from any project^)
     exit /b 0
 )
-set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\pope? [Y/n]: "
+set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\pope? [y/n]: "
 if /I "%ADD_GLOBAL_CLI:~0,1%"=="N" exit /b 0
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%\cli\install.ps1"
 exit /b 0

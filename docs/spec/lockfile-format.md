@@ -35,9 +35,21 @@ is what makes that single resolved choice explicit and stable.
       "source": "/home/you/.pope/cache/ba/validation/v1.2.0/src",
       "integrity": "sha256:..."
     }
+  },
+  "trustedDirectSources": {
+    "greeter": "https://github.com/example/greeter.git@v1.0.1"
   }
 }
 ```
+
+`trustedDirectSources` records, per package_name, the `repoUrl@ref` of each
+direct-source dependency (`DependencySpec.DirectSource` - a raw git URL
+declared inline, bypassing the registry catalog entirely) the user has
+already confirmed installing. `PopePlugin.kt`'s `popeInstall` prompts
+(`pope.trust.TrustPrompt`) before fetching any direct-source dependency
+whose key isn't already here with a matching `repoUrl@ref`; a changed
+`repoUrl`/`ref` for an already-trusted key is treated as new and re-prompted.
+`-PpopeTrustAll` approves without prompting, for non-interactive (CI) runs.
 
 `source` is the absolute path of the resolved package in the local fetch
 cache (`cacheDir`), written by `PopePlugin.kt`'s `popeInstall` — machine-

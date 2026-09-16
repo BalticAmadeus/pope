@@ -30,17 +30,31 @@ import java.io.File
  * checkNoNamespaceCollision below once the whole graph is known.
  */
 object DependencyResolver {
+    /** No-op default: callers that don't care about direct-source trust (e.g. most tests) see no behavior change. */
+    private val noOpTrustGate: (String, DependencySpec.DirectSource, List<String>) -> Unit = { _, _, _ -> }
+
     fun resolveAll(
         rootDependencies: Map<String, DependencySpec>,
         registry: Registry,
         directSourceCacheDir: File,
+        onDirectSource: (packageKey: String, spec: DependencySpec.DirectSource, path: List<String>) -> Unit = noOpTrustGate,
     ): Map<String, ResolvedPackage> {
         val resolved = LinkedHashMap<String, ResolvedPackage>()
         val resolvedSpecs = HashMap<String, DependencySpec>()
         val namespaceByKey = HashMap<String, String>()
 
         for ((packageName, spec) in rootDependencies) {
-            resolveOne(packageName, spec, path = emptyList(), resolved, resolvedSpecs, namespaceByKey, registry, directSourceCacheDir)
+            resolveOne(
+                packageName,
+                spec,
+                path = emptyList(),
+                resolved,
+                resolvedSpecs,
+                namespaceByKey,
+                registry,
+                directSourceCacheDir,
+                onDirectSource,
+            )
         }
 
         checkNoNamespaceCollision(namespaceByKey)
@@ -57,6 +71,7 @@ object DependencyResolver {
         namespaceByKey: MutableMap<String, String>,
         registry: Registry,
         directSourceCacheDir: File,
+        onDirectSource: (packageKey: String, spec: DependencySpec.DirectSource, path: List<String>) -> Unit,
     ) {
         check(packageKey !in path) {
             "Circular dependency: ${(path + packageKey).joinToString(" -> ")}"
@@ -71,10 +86,12 @@ object DependencyResolver {
         val resolvedPackage =
             when (spec) {
                 is DependencySpec.Registry -> registry.resolve(packageKey, spec.versionSpec)
-                is DependencySpec.DirectSource ->
+                is DependencySpec.DirectSource -> {
+                    onDirectSource(packageKey, spec, path)
                     GitPackageFetcher
                         .fetch(packageKey, spec.repoUrl, spec.ref, File(directSourceCacheDir, packageKey))
                         .copy(installSubpath = "_direct/$packageKey")
+                }
             }
         resolved[packageKey] = resolvedPackage
         resolvedSpecs[packageKey] = spec
@@ -93,6 +110,7 @@ object DependencyResolver {
                     namespaceByKey,
                     registry,
                     directSourceCacheDir,
+                    onDirectSource,
                 )
             }
         }

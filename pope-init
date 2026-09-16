@@ -49,7 +49,7 @@ offer_global_cli() {
         echo "(global pope CLI is already set up - \"pope install\" already works from any project)"
         return
     fi
-    read -r -p "Add the global pope CLI to PATH, so \"pope install\" works from any project without ./pope? [Y/n]: " answer
+    read -r -p "Add the global pope CLI to PATH, so \"pope install\" works from any project without ./pope? [y/n]: " answer
     case "$answer" in
         [nN]*) ;;
         *) "$TOOL_DIR/cli/install.sh" ;;
