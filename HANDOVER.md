@@ -15,17 +15,22 @@ is" / "Status" for the full pitch and what currently works end to end.
 
 ## The repos
 
-This used to be one monorepo; it's since split into five real, separate
-GitHub repos. Four still live under `github.com/erudys27/`; this one
+This used to be one monorepo; it's since split into six real, separate
+GitHub repos. Five still live under `github.com/erudys27/`; this one
 (`pope`) moved to `github.com/BalticAmadeus/pope` when it went to org
 ownership:
 
 | Repo | What it is |
 |---|---|
 | **`pope`** (this repo, `github.com/BalticAmadeus/pope`) | The plugin itself — everything under `src/`, plus the CLI (`pope`/`pope.bat`, `cli/`), scaffolding (`scaffold/`, `pope-init`), and docs. |
-| **`openedge-package-manager`** | The demo/consumer app — a real project that uses pope, showing two registries, a transitive dependency, and a direct-source dependency, all live. Good place to see the tool actually being used. |
 | **`registry-ba`**, **`registry-cw`** | Catalog registries — small repos holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo + tag. No package content lives in a registry itself. |
 | **`calculator`**, **`logger`**, **`greeter`** | Individual packages, each its own repo, each tagged per version. `calculator`/`logger` are referenced from the catalogs above; `greeter` is a direct-source dependency (no catalog entry at all). |
+
+An older `openedge-package-manager` repo also exists (the original demo/
+consumer app), but it predates this split and still uses a local, not
+remote, registry setup — don't point anyone to it as a current example;
+`registry-ba`/`calculator` above are the real, remote, currently-relevant
+ones.
 
 ## Repo layout (this repo, `pope`)
 
