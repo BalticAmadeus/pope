@@ -342,6 +342,27 @@ class PopePluginFunctionalTest {
         )
     }
 
+    @Test
+    fun `a name declared in both the DSL and pope-registries properties fails loudly`() {
+        val projectDir = buildMergedRegistriesProject()
+        // Redeclare the DSL's "x" name under a different prefix in the properties file too.
+        projectDir.resolve("pope-registries.properties").appendText(
+            "\nx.prefix=w.\nx.catalogUrl=https://example.invalid/w.git\n",
+        )
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("Duplicate registry name"),
+            "Expected a duplicate-name failure, got:\n${result.output}",
+        )
+    }
+
     // --- projectRoot != Gradle's own project directory ---
 
     @Test
@@ -549,6 +570,76 @@ class PopePluginFunctionalTest {
                 listOf("pope_packages/ba/calculator/src", "pope_packages/_direct/greeter/src"),
             ),
             "Expected buildPath to reference the nested paths, got: ${buildPathOf(projectDir)}",
+        )
+    }
+
+    // --- explicit "registryName/localName" selection ---
+
+    @Test
+    fun `an explicit registryName-localName dependency resolves via that registry, nested by its real prefix`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-explicit-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        File(catalogDir, "packages/calculator").mkdirs()
+        File(catalogDir, "packages/calculator/1.0.0.json").writeText(
+            JSONObject()
+                .put("repoUrl", calculatorRepo.absolutePath.replace("\\", "/"))
+                .put("version", "1.0.0")
+                .put("ref", "v1.0.0")
+                .toString(2),
+        )
+        git(catalogDir, "add", "-A")
+        git(catalogDir, "commit", "-m", "add calculator 1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-explicit-project").toFile()
+        // Isolated cacheDir - see the comment on the equivalent line in the nested-layout test above.
+        val cacheDir = createTempDirectory("pope-functional-test-explicit-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "explicit-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    // Registered as "registry-ba" with real prefix "ba." - deliberately
+                    // different from the label, to exercise explicit name-based selection
+                    // decoupled from prefix-based routing.
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "explicit-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put("dependencies", JSONObject().put("registry-ba/calculator", "^1.0.0"))
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        val installResult = run(projectDir, "popeInstall")
+
+        assertTrue(
+            installResult.output.contains("resolved 1 dependencies"),
+            "Expected the explicitly-selected registry-ba/calculator resolved, got:\n${installResult.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/ba/calculator/src/calculator/Calculator.cls").exists(),
+            "Expected the explicitly-selected package to land at pope_packages/ba/calculator " +
+                "(its real prefix), not pope_packages/registry-ba/calculator (its dependency key)",
         )
     }
 
