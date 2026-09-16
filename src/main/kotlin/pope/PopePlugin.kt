@@ -13,6 +13,7 @@ import pope.registry.LocalDirectoryRegistry
 import pope.registry.PrefixRoutingRegistry
 import pope.registry.Registry
 import pope.registry.RegistriesPropertiesFile
+import pope.registry.RegistryEntry
 import pope.resolver.DependencyResolver
 import pope.trust.TrustPrompt
 import org.gradle.api.GradleException
@@ -345,7 +346,10 @@ class PopePlugin : Plugin<Project> {
 /**
  * Merges registries{} (build.gradle.kts) with pope-registries.properties
  * (the programmatically-appendable source - see RegistriesPropertiesFile).
- * A prefix declared twice, in either source, is an error, not a pick.
+ * A prefix OR a name declared twice, in either source, is an error, not a
+ * pick - name uniqueness matters because a dependency key can address a
+ * registry directly by name ("registryName/localName", see
+ * PrefixRoutingRegistry), not just by prefix.
  * Falls back to LocalDirectoryRegistry only if both sources are empty.
  */
 private fun buildRegistry(extension: PopeExtension): Registry {
@@ -357,21 +361,34 @@ private fun buildRegistry(extension: PopeExtension): Registry {
 
     val cacheRoot = extension.cacheDir.get().asFile
     val ownerByPrefix = LinkedHashMap<String, String>()
-    val delegatesByPrefix = LinkedHashMap<String, Registry>()
+    val ownerByName = LinkedHashMap<String, String>()
+    val entries = mutableListOf<RegistryEntry>()
 
     fun addEntry(name: String, prefix: String, catalogUrl: String, catalogRef: String) {
-        val existingOwner = ownerByPrefix[prefix]
-        require(existingOwner == null) {
-            "Duplicate registry prefix \"$prefix\": both \"$existingOwner\" and \"$name\" declare it"
+        val existingPrefixOwner = ownerByPrefix[prefix]
+        require(existingPrefixOwner == null) {
+            "Duplicate registry prefix \"$prefix\": both \"$existingPrefixOwner\" and \"$name\" declare it"
         }
         ownerByPrefix[prefix] = name
-        delegatesByPrefix[prefix] =
-            CatalogRegistry(
-                registryName = name,
+
+        val existingNameOwner = ownerByName[name]
+        require(existingNameOwner == null) {
+            "Duplicate registry name \"$name\": both prefix \"$existingNameOwner\" and \"$prefix\" declare it"
+        }
+        ownerByName[name] = prefix
+
+        entries +=
+            RegistryEntry(
+                name = name,
                 prefix = prefix,
-                catalogUrl = catalogUrl,
-                catalogRef = catalogRef,
-                cacheDir = File(cacheRoot, name),
+                registry =
+                    CatalogRegistry(
+                        registryName = name,
+                        prefix = prefix,
+                        catalogUrl = catalogUrl,
+                        catalogRef = catalogRef,
+                        cacheDir = File(cacheRoot, name),
+                    ),
             )
     }
 
@@ -382,7 +399,7 @@ private fun buildRegistry(extension: PopeExtension): Registry {
         addEntry(entry.name, entry.prefix, entry.catalogUrl, entry.catalogRef ?: "main")
     }
 
-    return PrefixRoutingRegistry(delegatesByPrefix)
+    return PrefixRoutingRegistry(entries)
 }
 
 /** Every "src" dir under pope_packages/ not in expectedPaths, paired with its parent (the whole package folder to delete). */

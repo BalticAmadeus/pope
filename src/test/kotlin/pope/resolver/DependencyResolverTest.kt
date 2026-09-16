@@ -201,7 +201,8 @@ class DependencyResolverTest {
             """"greeter": { "repoUrl": "${greeterRepo.absolutePath.replace("\\", "\\\\")}", "ref": "v1.0.1" }""",
         )
         val delegate = LocalDirectoryRegistry(calculatorRegistryRoot)
-        val prefixRegistry = pope.registry.PrefixRoutingRegistry(mapOf("ba." to delegate))
+        val prefixRegistry =
+            pope.registry.PrefixRoutingRegistry(listOf(pope.registry.RegistryEntry("ba", "ba.", delegate)))
 
         val resolved =
             DependencyResolver.resolveAll(
@@ -226,7 +227,9 @@ class DependencyResolverTest {
         addPackageWithRawDeps(registryRootDir, "cw.logger", "1.0.0", sharedDepJson)
         val delegate = LocalDirectoryRegistry(registryRootDir)
         val prefixRegistry =
-            pope.registry.PrefixRoutingRegistry(mapOf("ba." to delegate, "cw." to delegate))
+            pope.registry.PrefixRoutingRegistry(
+                listOf(pope.registry.RegistryEntry("ba", "ba.", delegate), pope.registry.RegistryEntry("cw", "cw.", delegate)),
+            )
 
         val resolved =
             DependencyResolver.resolveAll(
