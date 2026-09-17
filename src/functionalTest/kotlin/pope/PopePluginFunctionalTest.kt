@@ -635,7 +635,7 @@ class PopePluginFunctionalTest {
         val installResult = run(projectDir, "popeInstall")
 
         assertTrue(
-            installResult.output.contains("resolved 1 dependencies"),
+            installResult.output.contains("Resolved 1 dependency:"),
             "Expected the explicitly-selected registry-ba/calculator resolved, got:\n${installResult.output}",
         )
         assertTrue(

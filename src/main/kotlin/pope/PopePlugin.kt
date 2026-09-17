@@ -181,9 +181,27 @@ class PopePlugin : Plugin<Project> {
                     }
                 BuildPathUpdater.ensureSourceEntries(manifestFile, dependencySourcePaths)
 
+                // Only new/version-changed packages get listed individually - pope_packages/ already
+                // holding an unchanged package isn't news on every reinstall, just noise.
+                val newOrChangedPackages =
+                    resolved.filterKeys { name -> existingLock[name]?.version != resolved.getValue(name).version }
                 val dependencyWord = if (resolved.size == 1) "dependency" else "dependencies"
-                project.logger.lifecycle("\nResolved ${resolved.size} $dependencyWord:")
-                resolved.keys.sorted().forEach { packageName -> project.logger.lifecycle("  - $packageName") }
+                if (newOrChangedPackages.isEmpty()) {
+                    project.logger.lifecycle("\nAll ${resolved.size} $dependencyWord already up to date")
+                } else {
+                    val unchangedCount = resolved.size - newOrChangedPackages.size
+                    val unchangedSuffix = if (unchangedCount > 0) " ($unchangedCount unchanged)" else ""
+                    project.logger.lifecycle("\nResolved ${resolved.size} $dependencyWord$unchangedSuffix:")
+                    newOrChangedPackages.keys.sorted().forEach { packageName ->
+                        val previousVersion = existingLock[packageName]?.version
+                        val currentVersion = newOrChangedPackages.getValue(packageName).version
+                        if (previousVersion == null) {
+                            project.logger.lifecycle("  + $packageName ($currentVersion)")
+                        } else {
+                            project.logger.lifecycle("  ~ $packageName ($previousVersion -> $currentVersion)")
+                        }
+                    }
+                }
             }
         }
 

@@ -15,16 +15,22 @@ is" / "Status" for the full pitch and what currently works end to end.
 
 ## The repos
 
-This used to be one monorepo; it's since split into six real, separate
-GitHub repos. Five still live under `github.com/erudys27/`; this one
-(`pope`) moved to `github.com/BalticAmadeus/pope` when it went to org
-ownership:
+This used to be one monorepo; it's since split into several real, separate
+GitHub repos, mostly under `github.com/erudys27/`; this one (`pope`) moved
+to `github.com/BalticAmadeus/pope` when it went to org ownership. The ones
+safe to reference in a demo (no other company's name in them):
 
 | Repo | What it is |
 |---|---|
 | **`pope`** (this repo, `github.com/BalticAmadeus/pope`) | The plugin itself — everything under `src/`, plus the CLI (`pope`/`pope.bat`, `cli/`), scaffolding (`scaffold/`, `pope-init`), and docs. |
-| **`registry-ba`**, **`registry-cw`** | Catalog registries — small repos holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo + tag. No package content lives in a registry itself. |
-| **`calculator`**, **`logger`**, **`greeter`** | Individual packages, each its own repo, each tagged per version. `calculator`/`logger` are referenced from the catalogs above; `greeter` is a direct-source dependency (no catalog entry at all). |
+| **`registry-ba`** | A catalog registry — a small repo holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo + tag. No package content lives in a registry itself. |
+| **`calculator`**, **`greeter`** | Individual packages, each its own repo, each tagged per version. `calculator` is referenced from the catalog above; `greeter` is a direct-source dependency (no catalog entry at all). |
+
+A couple of other registries/packages exist in the same erudys27 account
+from earlier testing (their prefixes/names reference another company) —
+don't use those in anything demo-facing; `registry-ba`/`calculator`/
+`greeter` above cover the same features (catalog registry, transitive
+resolution, direct-source dependency) without that problem.
 
 An older `openedge-package-manager` repo also exists (the original demo/
 consumer app), but it predates this split and still uses a local, not

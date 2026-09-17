@@ -11,6 +11,20 @@ set -o pipefail
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$(pwd)"
 
+# Loops on anything but yes/y/no/n rather than silently defaulting either
+# way on a typo - matches how the direct-source trust prompt behaves.
+ask_yes_no() {
+    local prompt="$1" answer
+    while true; do
+        read -r -p "$prompt [yes/no]: " answer
+        case "$answer" in
+            [yY] | [yY][eE][sS]) return 0 ;;
+            [nN] | [nN][oO]) return 1 ;;
+            *) echo "Please enter 'yes' or 'no'." ;;
+        esac
+    done
+}
+
 registries=""
 while true; do
     read -r -p "Registry prefix (e.g. ba.), or leave blank to stop adding registries: " prefix
@@ -28,11 +42,7 @@ while true; do
         registries="$prefix=$url"
     fi
 
-    read -r -p "Add another registry? [y/n]: " again
-    case "$again" in
-        [yY]*) ;;
-        *) break ;;
-    esac
+    ask_yes_no "Add another registry?" || break
 done
 
 run_scaffold() {
@@ -49,11 +59,9 @@ offer_global_cli() {
         echo "(global pope CLI is already set up - \"pope install\" already works from any project)"
         return
     fi
-    read -r -p "Add the global pope CLI to PATH, so \"pope install\" works from any project without ./pope? [y/n]: " answer
-    case "$answer" in
-        [nN]*) ;;
-        *) "$TOOL_DIR/cli/install.sh" ;;
-    esac
+    if ask_yes_no "Add the global pope CLI to PATH, so \"pope install\" works from any project without ./pope?"; then
+        "$TOOL_DIR/cli/install.sh"
+    fi
 }
 
 finish() {
