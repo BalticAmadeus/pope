@@ -1,5 +1,8 @@
 package pope.registry
 
+import pope.suggest.DidYouMean
+import pope.suggest.NameNotFoundException
+
 /** One configured registry: its DSL/properties label, its routing prefix, and the Registry that serves it. */
 data class RegistryEntry(val name: String, val prefix: String, val registry: Registry)
 
@@ -34,11 +37,18 @@ class PrefixRoutingRegistry(private val entries: List<RegistryEntry>) : Registry
         val registryName = packageName.substring(0, slashIndex)
         val localName = packageName.substring(slashIndex + 1)
         val entry =
-            byName[registryName]
-                ?: throw IllegalStateException(
+            byName[registryName] ?: run {
+                val suggestion = DidYouMean.suggest(registryName, byName.keys)
+                throw NameNotFoundException(
                     "No registry named \"$registryName\" is configured " +
-                        "(configured registry names: ${byName.keys.joinToString(", ")})",
+                        "(configured registry names: ${byName.keys.joinToString(", ")})" +
+                        // Names only the registry itself, not "$it/$localName" - localName hasn't
+                        // been validated yet at this point, so implying it's already confirmed
+                        // correct here would be misleading.
+                        (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
+                    suggestion = suggestion?.let { "$it/$localName" },
                 )
+            }
         return entry.registry to (entry.prefix + localName)
     }
 
