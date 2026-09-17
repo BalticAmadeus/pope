@@ -83,7 +83,7 @@ class PublishedPluginFunctionalTest {
                 .build()
 
         assertTrue(
-            installResult.output.contains("resolved 1 dependencies"),
+            installResult.output.contains("Resolved 1 dependency:"),
             "Expected the published plugin to resolve example.greeter for real, got:\n${installResult.output}",
         )
         assertTrue(

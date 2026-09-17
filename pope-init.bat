@@ -29,8 +29,14 @@ if "%REGISTRIES%"=="" (
     set REGISTRIES=!REGISTRIES!,%PREFIX%=%URL%
 )
 
-set /p AGAIN="Add another registry? [y/n]: "
-if /I "%AGAIN:~0,1%"=="Y" goto registry_loop
+:ask_again
+set /p AGAIN="Add another registry? [yes/no]: "
+if /I "%AGAIN%"=="y" goto registry_loop
+if /I "%AGAIN%"=="yes" goto registry_loop
+if /I "%AGAIN%"=="n" goto scaffold
+if /I "%AGAIN%"=="no" goto scaffold
+echo Please enter 'yes' or 'no'.
+goto ask_again
 
 :scaffold
 set OUTPUT_FILE=%TEMP%\pope-init-%RANDOM%.log
@@ -69,7 +75,15 @@ if %ERRORLEVEL%==0 (
     echo (global pope CLI is already set up - "pope install" already works from any project^)
     exit /b 0
 )
-set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\pope? [Y/n]: "
-if /I "%ADD_GLOBAL_CLI:~0,1%"=="N" exit /b 0
+:ask_add_global_cli
+set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\pope? [yes/no]: "
+if /I "%ADD_GLOBAL_CLI%"=="y" goto do_add_global_cli
+if /I "%ADD_GLOBAL_CLI%"=="yes" goto do_add_global_cli
+if /I "%ADD_GLOBAL_CLI%"=="n" exit /b 0
+if /I "%ADD_GLOBAL_CLI%"=="no" exit /b 0
+echo Please enter 'yes' or 'no'.
+goto ask_add_global_cli
+
+:do_add_global_cli
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%\cli\install.ps1"
 exit /b 0

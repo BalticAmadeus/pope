@@ -15,12 +15,15 @@ import pope.registry.Registry
 import pope.registry.RegistriesPropertiesFile
 import pope.registry.RegistryEntry
 import pope.resolver.DependencyResolver
+import pope.trust.TrustPrompt
 import org.gradle.api.GradleException
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.internal.tasks.userinput.UserInputHandler
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.json.JSONObject
@@ -73,8 +76,13 @@ class PopePlugin : Plugin<Project> {
             task.group = "pope"
             task.description =
                 "Resolves the project's declared dependencies. " +
-                "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step."
+                "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step. " +
+                "Direct-source dependencies (not from a registry) prompt for confirmation; " +
+                "pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
             task.doLast {
+                project.logger.lifecycle("=== pope install ===")
+                project.logger.lifecycle("")
+
                 val projectRoot = extension.projectRoot.get().asFile
                 val manifestFile = projectRoot.resolve("openedge-project.json")
                 val registry = buildRegistry(extension)
@@ -95,9 +103,32 @@ class PopePlugin : Plugin<Project> {
                         manifest.dependencies
                     }
 
+                // Direct-source deps bypass the registry catalog entirely, so each one not already
+                // approved (same repoUrl@ref) in pope.lock gets a trust prompt before it's fetched -
+                // see TrustPrompt. -PpopeTrustAll skips the prompt for non-interactive runs (CI).
+                val existingTrust = LockfileReader.readTrustedDirectSources(projectRoot.resolve("pope.lock"))
+                val trustAll = project.hasProperty("popeTrustAll")
+                val newlyTrusted = LinkedHashMap<String, String>()
+                val userInputHandler = (project as ProjectInternal).services.get(UserInputHandler::class.java)
+                val onDirectSource: (String, DependencySpec.DirectSource, List<String>) -> Unit = { packageKey, spec, path ->
+                    val sourceKey = "${spec.repoUrl}@${spec.ref}"
+                    if (existingTrust[packageKey] != sourceKey) {
+                        val approved =
+                            trustAll || TrustPrompt.confirm(userInputHandler, packageKey, spec.repoUrl, spec.ref, path)
+                        check(approved) {
+                            "pope install: \"$packageKey\" is a direct-source dependency, not from any " +
+                                "configured registry (${spec.repoUrl}@${spec.ref}), and was not approved. " +
+                                "Re-run interactively to approve it, or pass -PpopeTrustAll to approve " +
+                                "non-interactively."
+                        }
+                    }
+                    newlyTrusted[packageKey] = sourceKey
+                }
+
                 // Resolves the full graph, including transitive deps - see DependencyResolver.
                 val directSourceCacheDir = extension.cacheDir.get().asFile.resolve("_direct")
-                val resolvedPackages = DependencyResolver.resolveAll(dependenciesToResolve, registry, directSourceCacheDir)
+                val resolvedPackages =
+                    DependencyResolver.resolveAll(dependenciesToResolve, registry, directSourceCacheDir, onDirectSource)
 
                 // Catches a moved/hijacked tag before touching pope_packages/, not after.
                 val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
@@ -123,7 +154,7 @@ class PopePlugin : Plugin<Project> {
                 if (pendingAdd != null) {
                     val (packageName, versionSpec) = pendingAdd
                     DependenciesUpdater.addDependency(manifestFile, packageName, versionSpec)
-                    project.logger.lifecycle("pope install: added \"$packageName\": \"$versionSpec\" to dependencies")
+                    project.logger.lifecycle("  + added \"$packageName\": \"$versionSpec\" to dependencies")
                 }
 
                 val resolvedJson = JSONObject()
@@ -136,7 +167,12 @@ class PopePlugin : Plugin<Project> {
                             .put("integrity", integrities.getValue(packageName)),
                     )
                 }
-                val lockJson = JSONObject().put("resolved", resolvedJson)
+                val trustedDirectSourcesJson = JSONObject()
+                newlyTrusted.forEach { (packageKey, sourceKey) -> trustedDirectSourcesJson.put(packageKey, sourceKey) }
+                val lockJson =
+                    JSONObject()
+                        .put("resolved", resolvedJson)
+                        .put("trustedDirectSources", trustedDirectSourcesJson)
                 projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
 
                 val dependencySourcePaths =
@@ -145,7 +181,27 @@ class PopePlugin : Plugin<Project> {
                     }
                 BuildPathUpdater.ensureSourceEntries(manifestFile, dependencySourcePaths)
 
-                project.logger.lifecycle("pope install: resolved ${resolved.size} dependencies")
+                // Only new/version-changed packages get listed individually - pope_packages/ already
+                // holding an unchanged package isn't news on every reinstall, just noise.
+                val newOrChangedPackages =
+                    resolved.filterKeys { name -> existingLock[name]?.version != resolved.getValue(name).version }
+                val dependencyWord = if (resolved.size == 1) "dependency" else "dependencies"
+                if (newOrChangedPackages.isEmpty()) {
+                    project.logger.lifecycle("\nAll ${resolved.size} $dependencyWord already up to date")
+                } else {
+                    val unchangedCount = resolved.size - newOrChangedPackages.size
+                    val unchangedSuffix = if (unchangedCount > 0) " ($unchangedCount unchanged)" else ""
+                    project.logger.lifecycle("\nResolved ${resolved.size} $dependencyWord$unchangedSuffix:")
+                    newOrChangedPackages.keys.sorted().forEach { packageName ->
+                        val previousVersion = existingLock[packageName]?.version
+                        val currentVersion = newOrChangedPackages.getValue(packageName).version
+                        if (previousVersion == null) {
+                            project.logger.lifecycle("  + $packageName ($currentVersion)")
+                        } else {
+                            project.logger.lifecycle("  ~ $packageName ($previousVersion -> $currentVersion)")
+                        }
+                    }
+                }
             }
         }
 
@@ -169,6 +225,9 @@ class PopePlugin : Plugin<Project> {
                 "Removes pope_packages/ entries (and their buildPath references) that are no longer " +
                 "part of the resolved dependency graph. Pass -PpopeDryRun to preview without changing anything."
             task.doLast {
+                project.logger.lifecycle("=== pope prune ===")
+                project.logger.lifecycle("")
+
                 val projectRoot = extension.projectRoot.get().asFile
                 val manifestFile = projectRoot.resolve("openedge-project.json")
                 val registry = buildRegistry(extension)
@@ -196,12 +255,14 @@ class PopePlugin : Plugin<Project> {
 
                 val allStalePaths = (staleDirs.map { it.second } + staleBuildPathPaths).toSortedSet()
                 if (allStalePaths.isEmpty()) {
-                    project.logger.lifecycle("pope prune: nothing to remove")
+                    project.logger.lifecycle("  nothing to remove")
                 } else {
                     val verb = if (dryRun) "would remove" else "removed"
-                    allStalePaths.forEach { project.logger.lifecycle("pope prune: $verb $it") }
+                    allStalePaths.forEach { project.logger.lifecycle("  - $verb $it") }
+                    val entryWord = if (allStalePaths.size == 1) "entry" else "entries"
                     val suffix = if (dryRun) " (dry run - nothing changed)" else ""
-                    project.logger.lifecycle("pope prune: $verb ${allStalePaths.size} entr${if (allStalePaths.size == 1) "y" else "ies"}$suffix")
+                    project.logger.lifecycle("")
+                    project.logger.lifecycle("${allStalePaths.size} $entryWord $verb$suffix")
                 }
             }
         }
@@ -212,6 +273,9 @@ class PopePlugin : Plugin<Project> {
                 "Removes a dependency and cleans up its pope_packages/pope.lock/buildPath entries. " +
                 "Usage: -PpopeUninstall=<package_name>"
             task.doLast {
+                project.logger.lifecycle("=== pope uninstall ===")
+                project.logger.lifecycle("")
+
                 val packageName =
                     project.findProperty("popeUninstall") as String?
                         ?: throw GradleException("Missing -PpopeUninstall=<package_name>.")
@@ -262,9 +326,7 @@ class PopePlugin : Plugin<Project> {
                 }
                 projectRoot.resolve("pope.lock").writeText(JSONObject().put("resolved", resolvedJson).toString(2))
 
-                project.logger.lifecycle(
-                    "pope uninstall: removed \"$packageName\" (${staleDirs.size} package folder(s) cleaned up)",
-                )
+                project.logger.lifecycle("  removed \"$packageName\" (${staleDirs.size} package folder(s) cleaned up)")
             }
         }
 
@@ -274,6 +336,9 @@ class PopePlugin : Plugin<Project> {
                 "Adds a registry entry to pope-registries.properties. " +
                 "Usage: -PregistryPrefix=<prefix> -PcatalogUrl=<url> [-PregistryName=<name>]"
             task.doLast {
+                project.logger.lifecycle("=== pope registry add ===")
+                project.logger.lifecycle("")
+
                 val prefix =
                     project.findProperty("registryPrefix") as String?
                         ?: throw GradleException(
@@ -290,7 +355,7 @@ class PopePlugin : Plugin<Project> {
 
                 val file = extension.projectRoot.get().asFile.resolve("pope-registries.properties")
                 RegistriesPropertiesFile.add(file, name, prefix, catalogUrl)
-                project.logger.lifecycle("pope registry add: added \"$name\" ($prefix -> $catalogUrl) to ${file.name}")
+                project.logger.lifecycle("  + added \"$name\" ($prefix -> $catalogUrl) to ${file.name}")
             }
         }
     }
