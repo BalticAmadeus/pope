@@ -27,7 +27,7 @@ ask_yes_no() {
 
 registries=""
 while true; do
-    read -r -p "Registry prefix (e.g. ba.), or leave blank to stop adding registries: " prefix
+    read -r -p "Registry prefix (e.g. ba), or leave blank to stop adding registries: " prefix
     [ -z "$prefix" ] && break
 
     read -r -p "Catalog URL for \"$prefix\": " url

@@ -88,7 +88,7 @@ if /I "%COMMAND%"=="propath" (
 if /I "%COMMAND%"=="registry" (
     if /I not "%~2"=="add" goto usage
     if "%~3"=="" (
-        set /p PREFIX="Registry prefix (e.g. ba.): "
+        set /p PREFIX="Registry prefix (e.g. ba): "
         if "!PREFIX!"=="" (
             echo Registry prefix is required.
             exit /b 1

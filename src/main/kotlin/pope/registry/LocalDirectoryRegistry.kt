@@ -1,6 +1,9 @@
 package pope.registry
 
+import pope.manifest.Manifest
 import pope.manifest.ManifestReader
+import pope.suggest.DidYouMean
+import pope.suggest.NameNotFoundException
 import pope.version.CaretRange
 import pope.version.SemVer
 import java.io.File
@@ -9,8 +12,14 @@ import java.io.File
 class LocalDirectoryRegistry(private val root: File) : Registry {
     override fun resolve(packageName: String, versionSpec: String): ResolvedPackage {
         val found =
-            findAny(packageName)
-                ?: throw IllegalStateException("No package named \"$packageName\" found under registry root ${root.path}")
+            findAny(packageName) ?: run {
+                val suggestion = DidYouMean.suggest(packageName, allPackageNames())
+                throw NameNotFoundException(
+                    "No package named \"$packageName\" found under registry root ${root.path}" +
+                        (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
+                    suggestion = suggestion,
+                )
+            }
 
         val version = SemVer.parse(found.version)
         if (!CaretRange.satisfies(versionSpec, version)) {
@@ -23,15 +32,7 @@ class LocalDirectoryRegistry(private val root: File) : Registry {
     }
 
     override fun findAny(packageName: String): ResolvedPackage? {
-        require(root.isDirectory) { "Registry root not found or not a directory: ${root.path}" }
-
-        val candidates =
-            root.listFiles { file -> file.isDirectory }.orEmpty()
-                .mapNotNull { candidateDir ->
-                    val manifestFile = File(candidateDir, "openedge-project.json")
-                    if (!manifestFile.exists()) return@mapNotNull null
-                    candidateDir to ManifestReader.read(manifestFile)
-                }.sortedBy { (candidateDir, _) -> candidateDir.name }
+        val candidates = allCandidates()
 
         val (candidateDir, manifest) =
             PackageMatcher.selectUnique(candidates, packageName, describeLocation = { it.path }) ?: return null
@@ -49,4 +50,18 @@ class LocalDirectoryRegistry(private val root: File) : Registry {
             projectDir = candidateDir,
         )
     }
+
+    private fun allCandidates(): List<Pair<File, Manifest>> {
+        require(root.isDirectory) { "Registry root not found or not a directory: ${root.path}" }
+
+        return root.listFiles { file -> file.isDirectory }.orEmpty()
+            .mapNotNull { candidateDir ->
+                val manifestFile = File(candidateDir, "openedge-project.json")
+                if (!manifestFile.exists()) return@mapNotNull null
+                candidateDir to ManifestReader.read(manifestFile)
+            }.sortedBy { (candidateDir, _) -> candidateDir.name }
+    }
+
+    /** Every declared package_name under this root - for "did you mean X?" suggestions only. */
+    private fun allPackageNames(): List<String> = allCandidates().map { (_, manifest) -> manifest.packageName }
 }

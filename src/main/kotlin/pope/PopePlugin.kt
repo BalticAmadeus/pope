@@ -14,7 +14,9 @@ import pope.registry.PrefixRoutingRegistry
 import pope.registry.Registry
 import pope.registry.RegistriesPropertiesFile
 import pope.registry.RegistryEntry
+import pope.registry.ResolvedPackage
 import pope.resolver.DependencyResolver
+import pope.suggest.NameNotFoundException
 import pope.trust.TrustPrompt
 import org.gradle.api.GradleException
 import org.gradle.api.Named
@@ -76,7 +78,8 @@ class PopePlugin : Plugin<Project> {
             task.group = "pope"
             task.description =
                 "Resolves the project's declared dependencies. " +
-                "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step. " +
+                "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step - " +
+                "a close-but-not-found name (typo) prompts to install the suggested one instead of just failing. " +
                 "Direct-source dependencies (not from a registry) prompt for confirmation; " +
                 "pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
             task.doLast {
@@ -87,11 +90,12 @@ class PopePlugin : Plugin<Project> {
                 val manifestFile = projectRoot.resolve("openedge-project.json")
                 val registry = buildRegistry(extension)
                 val manifest = ManifestReader.read(manifestFile)
+                val userInputHandler = (project as ProjectInternal).services.get(UserInputHandler::class.java)
 
                 // Held in memory, not written yet - keeps a failed resolve from touching the manifest at all.
                 val pendingAdd: Pair<String, String>? =
                     if (project.hasProperty("popeAdd")) {
-                        resolveAddSpec(project.property("popeAdd") as String, registry)
+                        resolveAddSpec(project.property("popeAdd") as String, registry, userInputHandler)
                     } else {
                         null
                     }
@@ -109,7 +113,6 @@ class PopePlugin : Plugin<Project> {
                 val existingTrust = LockfileReader.readTrustedDirectSources(projectRoot.resolve("pope.lock"))
                 val trustAll = project.hasProperty("popeTrustAll")
                 val newlyTrusted = LinkedHashMap<String, String>()
-                val userInputHandler = (project as ProjectInternal).services.get(UserInputHandler::class.java)
                 val onDirectSource: (String, DependencySpec.DirectSource, List<String>) -> Unit = { packageKey, spec, path ->
                     val sourceKey = "${spec.repoUrl}@${spec.ref}"
                     if (existingTrust[packageKey] != sourceKey) {
@@ -354,8 +357,8 @@ class PopePlugin : Plugin<Project> {
                 val name = project.findProperty("registryName") as String? ?: prefix.trimEnd('.')
 
                 val file = extension.projectRoot.get().asFile.resolve("pope-registries.properties")
-                RegistriesPropertiesFile.add(file, name, prefix, catalogUrl)
-                project.logger.lifecycle("  + added \"$name\" ($prefix -> $catalogUrl) to ${file.name}")
+                val storedPrefix = RegistriesPropertiesFile.add(file, name, prefix, catalogUrl)
+                project.logger.lifecycle("  + added \"$name\" ($storedPrefix -> $catalogUrl) to ${file.name}")
             }
         }
     }
@@ -445,18 +448,40 @@ private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
 }
 
 /** Parses -PpopeAdd=<name>[:<versionSpec>]; no versionSpec means "whatever's available", pinned as ^version. */
-private fun resolveAddSpec(addSpec: String, registry: Registry): Pair<String, String> {
+private fun resolveAddSpec(addSpec: String, registry: Registry, userInputHandler: UserInputHandler): Pair<String, String> {
     val separatorIndex = addSpec.indexOf(':')
-    val packageName = if (separatorIndex >= 0) addSpec.substring(0, separatorIndex) else addSpec
-    val versionSpec =
-        if (separatorIndex >= 0) {
-            addSpec.substring(separatorIndex + 1)
-        } else {
-            val found =
-                registry.findAny(packageName)
-                    ?: throw IllegalStateException("No package named \"$packageName\" found in the registry")
-            "^${found.version}"
-        }
+    if (separatorIndex >= 0) {
+        return addSpec.substring(0, separatorIndex) to addSpec.substring(separatorIndex + 1)
+    }
 
-    return packageName to versionSpec
+    val (packageName, found) = findAnyConfirmingTypo(addSpec, registry, userInputHandler)
+    return packageName to "^${found.version}"
+}
+
+/**
+ * findAny(), but a "did you mean X?" suggestion (NameNotFoundException.suggestion) becomes an
+ * actual yes/no prompt instead of just failing: "yes" retries with (and installs) the suggested
+ * name instead, "no" - or nothing to suggest - fails exactly as before.
+ */
+private fun findAnyConfirmingTypo(
+    packageName: String,
+    registry: Registry,
+    userInputHandler: UserInputHandler,
+): Pair<String, ResolvedPackage> {
+    val found =
+        try {
+            // findAny() returning null carries no detail (no catalog/registry context to build a
+            // "did you mean X?" message from here) - re-resolve with a versionSpec no real
+            // package satisfies purely to surface the registry's own richer error instead.
+            registry.findAny(packageName) ?: registry.resolve(packageName, "^0.0.0")
+        } catch (e: NameNotFoundException) {
+            val suggestion = e.suggestion ?: throw e
+            // e.message already ends in "- did you mean \"X\"?" - a complete yes/no question on
+            // its own, so it's asked as-is rather than echoing the (full retry) suggestion again
+            // in a separate line, which would re-state the untouched half as if newly confirmed.
+            val approved = userInputHandler.askYesNoQuestion(e.message ?: "Install the suggested name instead?") ?: false
+            if (!approved) throw e
+            return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
+        }
+    return packageName to found
 }

@@ -1,6 +1,7 @@
 package pope.registry
 
 import pope.fetch.GitCli
+import pope.suggest.NameNotFoundException
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -105,6 +106,40 @@ class CatalogRegistryTest {
 
         assertEquals("1.0.0", registry.resolve("example.calculator", "^1.0.0").version)
         assertFailsWith<IllegalStateException> { registry.resolve("example.calculator", "^2.0.0") }
+    }
+
+    @Test
+    fun `resolve throws NameNotFoundException with a did-you-mean suggestion for a close typo`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir, prefix = "ba.")
+
+        val error =
+            assertFailsWith<NameNotFoundException> { registry.resolve("ba.claculator", "^1.0.0") }
+
+        // "registryName/localName" - not prefix-concatenated - so it reads clean and retries
+        // correctly no matter what this registry's own configured prefix looks like.
+        assertEquals("test/calculator", error.suggestion)
+        assertTrue(error.message!!.contains("did you mean \"calculator\""))
+    }
+
+    @Test
+    fun `resolve throws NameNotFoundException with no suggestion when nothing is close`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir, prefix = "ba.")
+
+        val error =
+            assertFailsWith<NameNotFoundException> { registry.resolve("ba.zzzzzzzzzzzz", "^1.0.0") }
+
+        assertNull(error.suggestion)
+        assertFalse(error.message!!.contains("did you mean"))
     }
 
     @Test

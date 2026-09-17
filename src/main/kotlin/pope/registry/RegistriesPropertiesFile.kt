@@ -36,18 +36,25 @@ object RegistriesPropertiesFile {
         }
     }
 
-    /** Creates the file if missing. Appends only - never rewrites existing lines. */
-    fun add(file: File, name: String, prefix: String, catalogUrl: String) {
+    /** Creates the file if missing. Appends only - never rewrites existing lines. Returns the (possibly normalized) prefix actually stored. */
+    fun add(file: File, name: String, prefix: String, catalogUrl: String): String {
+        // A trailing "." is what lets a prefix cleanly strip off a local name (see CatalogRegistry) -
+        // added automatically so a user doesn't have to remember to type it themselves.
+        val normalizedPrefix = if (prefix.endsWith(".")) prefix else "$prefix."
+
         val existing = read(file)
         require(existing.none { it.name == name }) {
             "Registry \"$name\" is already declared in ${file.path}"
         }
-        val prefixOwner = existing.firstOrNull { it.prefix == prefix }
+        val prefixOwner = existing.firstOrNull { it.prefix == normalizedPrefix }
         require(prefixOwner == null) {
-            "Registry prefix \"$prefix\" is already declared in ${file.path} (as \"${prefixOwner?.name}\")"
+            "Registry prefix \"$normalizedPrefix\" is already declared in ${file.path} (as \"${prefixOwner?.name}\")"
         }
 
         val needsLeadingNewline = file.exists() && file.length() > 0 && !file.readText().endsWith("\n")
-        file.appendText((if (needsLeadingNewline) "\n" else "") + "$name.prefix=$prefix\n$name.catalogUrl=$catalogUrl\n")
+        file.appendText(
+            (if (needsLeadingNewline) "\n" else "") + "$name.prefix=$normalizedPrefix\n$name.catalogUrl=$catalogUrl\n",
+        )
+        return normalizedPrefix
     }
 }

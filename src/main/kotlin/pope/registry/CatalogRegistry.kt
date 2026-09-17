@@ -2,6 +2,8 @@ package pope.registry
 
 import pope.fetch.GitCli
 import pope.fetch.GitPackageFetcher
+import pope.suggest.DidYouMean
+import pope.suggest.NameNotFoundException
 import pope.version.CaretRange
 import pope.version.SemVer
 import org.json.JSONException
@@ -40,8 +42,18 @@ class CatalogRegistry(
         ensureCatalogCloned()
 
         val references = findAllReferences(localName)
-        require(references.isNotEmpty()) {
-            "No package named \"$packageName\" found in registry \"$registryName\" catalog ($catalogUrl)"
+        if (references.isEmpty()) {
+            val suggestion = DidYouMean.suggest(localName, allLocalNames())
+            throw NameNotFoundException(
+                "No package named \"$packageName\" found in registry \"$registryName\" catalog ($catalogUrl)" +
+                    // Names only the local name, not "registryName/localName" - the registry itself
+                    // was already valid to get here, so only the part actually in question is shown.
+                    (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
+                // The retry value is still "registryName/localName" (the explicit syntax), not
+                // "prefix + localName" - always retries correctly regardless of whether this
+                // registry's own configured prefix happens to end in a separator or not.
+                suggestion = suggestion?.let { "$registryName/$it" },
+            )
         }
 
         val best =
@@ -89,6 +101,10 @@ class CatalogRegistry(
         val versionFiles = packageDir.listFiles { file -> file.isFile && file.extension == "json" }.orEmpty()
         return versionFiles.map { readReference(it, localName) }
     }
+
+    /** Every local_name this catalog has at least one version file for - for "did you mean X?" suggestions only. */
+    private fun allLocalNames(): List<String> =
+        File(catalogDir, "packages").listFiles { file -> file.isDirectory }.orEmpty().map { it.name }
 
     private fun ensureCatalogCloned() {
         if (File(catalogDir, ".git").exists()) {

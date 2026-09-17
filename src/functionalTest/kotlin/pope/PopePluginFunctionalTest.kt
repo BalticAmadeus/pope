@@ -645,6 +645,70 @@ class PopePluginFunctionalTest {
         )
     }
 
+    @Test
+    fun `a typo in an explicit local name suggests the closest real package in that registry`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-typo-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        File(catalogDir, "packages/calculator").mkdirs()
+        File(catalogDir, "packages/calculator/1.0.0.json").writeText(
+            JSONObject()
+                .put("repoUrl", calculatorRepo.absolutePath.replace("\\", "/"))
+                .put("version", "1.0.0")
+                .put("ref", "v1.0.0")
+                .toString(2),
+        )
+        git(catalogDir, "add", "-A")
+        git(catalogDir, "commit", "-m", "add calculator 1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-typo-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-typo-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "typo-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "typo-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .toString(2),
+        )
+
+        // Reproduces the exact reported scenario: `pope install registry-ba/claculator`
+        // (typo'd local name, valid registry name) via -PpopeAdd.
+        val installResult =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall", "-PpopeAdd=registry-ba/claculator")
+                .buildAndFail()
+
+        assertTrue(
+            installResult.output.contains("did you mean \"calculator\"?"),
+            "Expected a \"did you mean\" suggestion pointing at the real package, got:\n${installResult.output}",
+        )
+    }
+
     // --- buildPath "test" type ---
 
     @Test

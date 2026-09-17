@@ -260,7 +260,11 @@ tasks.register("scaffoldProject") {
                 }
 
             val toAppend = StringBuilder()
-            for ((prefix, url) in registries) {
+            for ((rawPrefix, url) in registries) {
+                // A trailing "." is what lets a prefix cleanly strip off a local name (see
+                // CatalogRegistry) - added automatically so a user doesn't have to remember to
+                // type it themselves.
+                val prefix = if (rawPrefix.endsWith(".")) rawPrefix else "$rawPrefix."
                 val name = prefix.trimEnd('.')
                 val current = existing[name]
                 when {
