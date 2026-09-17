@@ -161,8 +161,10 @@ pope {
 
 A dependency like `"ba.calculator": "^1.0.0"` routes to whichever
 registry's prefix it starts with. See
-[openedge-package-manager](https://github.com/erudys27/openedge-package-manager)
-for a real, working example. If neither source has any entries,
+[registry-ba](https://github.com/erudys27/registry-ba) for a real catalog
+registry, and the packages it references (e.g.
+[calculator](https://github.com/erudys27/calculator)) for what a
+resolvable package repo looks like. If neither source has any entries,
 `popeInstall` falls back to a plain local-directory registry
 (`registryRoot`).
 

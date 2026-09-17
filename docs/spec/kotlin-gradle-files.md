@@ -16,12 +16,16 @@ This doc links to it rather than repeating it.
 This repo used to be the whole `pope` monorepo — plugin, a `demo/` app,
 and registry content all together. It's since been split (see README.md's
 intro): this repo is just the plugin now. Real projects that *use* the
-plugin live elsewhere — the demo/consumer app at
-[openedge-package-manager](https://github.com/erudys27/openedge-package-manager),
-and small throwaway fixture packages this repo carries itself for tests
+plugin live elsewhere — real, remote catalog registries like
+[registry-ba](https://github.com/erudys27/registry-ba) and the packages
+they reference (e.g. [calculator](https://github.com/erudys27/calculator)),
+plus small throwaway fixture packages this repo carries itself for tests
 (`src/functionalTest/resources/fixtures/`). Older docs in `docs/decisions/`
-and `docs/research/` may still mention `demo/` — those are historical
-records of the monorepo era and are left as-is on purpose, not updated.
+and `docs/research/` may still mention `demo/` or `openedge-package-manager`
+— those are historical records of the monorepo era and are left as-is on
+purpose, not updated; `openedge-package-manager` itself still uses a local,
+not remote, registry setup and shouldn't be pointed to as a current
+example.
 
 Two definitions first:
 
