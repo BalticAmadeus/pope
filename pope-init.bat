@@ -14,7 +14,7 @@ set TARGET_DIR=%CD%
 set REGISTRIES=
 
 :registry_loop
-set /p PREFIX="Registry prefix (e.g. ba.), or leave blank to stop adding registries: "
+set /p PREFIX="Registry prefix (e.g. ba), or leave blank to stop adding registries: "
 if "%PREFIX%"=="" goto scaffold
 
 set /p URL="Catalog URL for %PREFIX%: "

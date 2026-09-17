@@ -52,6 +52,28 @@ class RegistriesPropertiesFileTest {
     }
 
     @Test
+    fun `add appends a trailing dot to a prefix that's missing one, and returns the stored value`() {
+        val file = tempFile()
+
+        val stored = RegistriesPropertiesFile.add(file, "ba", "ba", "https://github.com/erudys27/registry-ba.git")
+
+        assertEquals("ba.", stored)
+        assertEquals(
+            listOf(RegistryFileEntry("ba", "ba.", "https://github.com/erudys27/registry-ba.git", null)),
+            RegistriesPropertiesFile.read(file),
+        )
+    }
+
+    @Test
+    fun `add leaves an already-dotted prefix unchanged`() {
+        val file = tempFile()
+
+        val stored = RegistriesPropertiesFile.add(file, "ba", "ba.", "https://github.com/erudys27/registry-ba.git")
+
+        assertEquals("ba.", stored)
+    }
+
+    @Test
     fun `add appends without disturbing existing entries`() {
         val file = tempFile()
         RegistriesPropertiesFile.add(file, "ba", "ba.", "https://github.com/erudys27/registry-ba.git")

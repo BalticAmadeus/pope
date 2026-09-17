@@ -112,7 +112,7 @@ case "$command" in
         [ "${1:-}" = "add" ] || usage
         shift
         if [ "$#" -eq 0 ]; then
-            read -r -p "Registry prefix (e.g. ba.): " prefix
+            read -r -p "Registry prefix (e.g. ba): " prefix
             [ -n "$prefix" ] || { echo "Registry prefix is required."; exit 1; }
             read -r -p "Catalog URL: " url
             [ -n "$url" ] || { echo "Catalog URL is required."; exit 1; }
