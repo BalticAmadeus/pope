@@ -54,6 +54,15 @@ if [ ! -x "$GRADLEW" ]; then
     exit 1
 fi
 
+run_gradle() {
+    set +e
+    "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" "$@"
+    local status=$?
+    set -e
+    echo
+    return $status
+}
+
 usage() {
     echo "Usage (running against $PROJECT_ROOT):"
     echo "  pope install                          resolve declared dependencies"
@@ -76,25 +85,25 @@ shift
 case "$command" in
     install)
         if [ "$#" -eq 0 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeInstall
+            run_gradle popeInstall
         elif [ "$#" -eq 1 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeInstall "-PpopeAdd=$1"
+            run_gradle popeInstall "-PpopeAdd=$1"
         else
             usage
         fi
         ;;
     uninstall)
         if [ "$#" -eq 1 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeUninstall "-PpopeUninstall=$1"
+            run_gradle popeUninstall "-PpopeUninstall=$1"
         else
             usage
         fi
         ;;
     propath)
         if [ "$#" -eq 0 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePropath
+            run_gradle popePropath
         elif [ "$#" -eq 1 ] && [ "$1" = "--tests" ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePropath -PpopeIncludeTests
+            run_gradle popePropath -PpopeIncludeTests
         else
             usage
         fi
@@ -107,20 +116,20 @@ case "$command" in
             [ -n "$prefix" ] || { echo "Registry prefix is required."; exit 1; }
             read -r -p "Catalog URL: " url
             [ -n "$url" ] || { echo "Catalog URL is required."; exit 1; }
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$prefix" "-PcatalogUrl=$url"
+            run_gradle popeRegistryAdd "-PregistryPrefix=$prefix" "-PcatalogUrl=$url"
         elif [ "$#" -eq 2 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2"
+            run_gradle popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2"
         elif [ "$#" -eq 3 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2" "-PregistryName=$3"
+            run_gradle popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2" "-PregistryName=$3"
         else
             usage
         fi
         ;;
     prune)
         if [ "$#" -eq 0 ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePrune
+            run_gradle popePrune
         elif [ "$#" -eq 1 ] && [ "$1" = "--dry-run" ]; then
-            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePrune -PpopeDryRun
+            run_gradle popePrune -PpopeDryRun
         else
             usage
         fi

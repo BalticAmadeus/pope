@@ -39,13 +39,14 @@ This is the project's second rename; the first (`ppm` → `oepm`) is
 recorded in ADR-0005, which is left untouched as an accurate record of
 that decision at the time it was made, rather than retroactively rewritten.
 
-Scope stayed narrow otherwise: `registry-ba`, `registry-cw`,
-`calculator`, `logger`, `greeter`, and the demo repo
-`openedge-package-manager` all stay under `erudys27`, as repos, unmoved
-and unrenamed — except that the demo repo's `build.gradle.kts` and its
-`.oepm`-family on-disk artifacts needed migrating too, since it consumes
-this plugin and there was no backward-compat exception carved out for
-already-existing consumer projects.
+Scope stayed narrow otherwise: `registry-ba`, `calculator`, `greeter`,
+and the demo repo `openedge-package-manager` (plus a couple of other
+registries/packages from earlier testing, not named here) all stay under
+`erudys27`, as repos, unmoved and unrenamed — except that the demo repo's
+`build.gradle.kts` and its `.oepm`-family on-disk artifacts needed
+migrating too, since it consumes this plugin and there was no
+backward-compat exception carved out for already-existing consumer
+projects.
 
 Clean break: no redirect or deprecation note was left in the old
 `erudys27/oepm-tool` repo. Full git history (all commits, branches, tags)

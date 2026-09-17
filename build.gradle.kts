@@ -132,6 +132,9 @@ tasks.register("scaffoldProject") {
         "[-PpackageName=<name>] [-Pregistries=<prefix1>=<url1>[,<prefix2>=<url2>,...]]"
 
     doLast {
+        logger.lifecycle("=== pope init ===")
+        logger.lifecycle("")
+
         val targetDirProp =
             project.findProperty("targetDir") as String?
                 ?: throw GradleException(
@@ -209,14 +212,14 @@ tasks.register("scaffoldProject") {
                 ),
             )
         } else {
-            logger.warn("${settingsFile.path} already exists - left untouched. Needs: includeBuild(\"$popeToolPath\")")
+            logger.warn("  ${settingsFile.path} already exists - left untouched. Needs: includeBuild(\"$popeToolPath\")")
         }
 
         val propertiesFile = File(gradleFilesDir, "gradle.properties")
         if (!propertiesFile.exists()) {
             propertiesFile.writeText(renderTemplate("gradle.properties.template", mapOf("POPE_TOOL_PATH" to popeToolPath)))
         } else {
-            logger.warn("${propertiesFile.path} already exists - left untouched. Needs: popeToolPath=$popeToolPath")
+            logger.warn("  ${propertiesFile.path} already exists - left untouched. Needs: popeToolPath=$popeToolPath")
         }
 
         val buildFile = File(gradleFilesDir, "build.gradle.kts")
@@ -228,7 +231,7 @@ tasks.register("scaffoldProject") {
             val projectRootBlock = if (legacyLayout) "" else "\n    projectRoot.set(file(\"..\"))"
             buildFile.writeText(renderTemplate("build.gradle.kts.template", mapOf("PROJECT_ROOT_BLOCK" to projectRootBlock)))
         } else {
-            logger.warn("${buildFile.path} already exists - left untouched. Needs id(\"io.github.balticamadeus.pope\") applied.")
+            logger.warn("  ${buildFile.path} already exists - left untouched. Needs id(\"io.github.balticamadeus.pope\") applied.")
         }
 
         // Registries live in pope-registries.properties, independent of
@@ -259,10 +262,10 @@ tasks.register("scaffoldProject") {
                     current == (prefix to url) -> {} // already there, nothing to do
                     current != null ->
                         logger.warn(
-                            "pope-registries.properties already has \"$name\" with different values - left untouched",
+                            "  pope-registries.properties already has \"$name\" with different values - left untouched",
                         )
                     existing.values.any { it.first == prefix } ->
-                        logger.warn("pope-registries.properties already has prefix \"$prefix\" under a different name")
+                        logger.warn("  pope-registries.properties already has prefix \"$prefix\" under a different name")
                     else -> toAppend.append("$name.prefix=$prefix\n$name.catalogUrl=$url\n")
                 }
             }
@@ -287,7 +290,7 @@ tasks.register("scaffoldProject") {
                     mapOf("PROJECT_NAME" to rootProjectName, "PACKAGE_NAME" to packageName),
                 ),
             )
-            logger.lifecycle("Generated openedge-project.json (package_name: \"$packageName\")")
+            logger.lifecycle("  + generated openedge-project.json (package_name: \"$packageName\")")
         } else {
             val json = org.json.JSONObject(manifestFile.readText())
             var patched = false
@@ -307,20 +310,21 @@ tasks.register("scaffoldProject") {
                     } ?: "src"
                 val packageName = resolvePackageName(explicitPackageName, File(targetDir, sourceRoot))
                 json.put("package_name", packageName)
-                logger.lifecycle("Added package_name: \"$packageName\" to openedge-project.json")
+                logger.lifecycle("  + added package_name: \"$packageName\" to openedge-project.json")
                 patched = true
             }
 
             if (patched) {
                 manifestFile.writeText(json.toString(2))
             } else {
-                logger.lifecycle("openedge-project.json already has everything pope needs - left untouched")
+                logger.lifecycle("  openedge-project.json already has everything pope needs - left untouched")
             }
         }
 
+        logger.lifecycle("")
         logger.lifecycle("pope wiring is set up at ${targetDir.path}")
         if (registries.isEmpty()) {
-            logger.lifecycle("  - Add a registry: pope registry add <prefix> <url> (writes pope-registries.properties)")
+            logger.lifecycle("  - add a registry: pope registry add <prefix> <url> (writes pope-registries.properties)")
         }
         logger.lifecycle("  - cd ${targetDir.path} && pope.bat install <package_name>")
     }

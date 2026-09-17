@@ -99,7 +99,7 @@ class PopePluginFunctionalTest {
         // calculator-package itself declares example.greeter — so a
         // correct run resolves both (see DependencyResolver).
         assertTrue(
-            installResult.output.contains("resolved 2 dependencies"),
+            installResult.output.contains("Resolved 2 dependencies:"),
             "Expected popeInstall to report both the direct and transitive dependency, got:\n${installResult.output}",
         )
         assertTrue(
@@ -407,7 +407,7 @@ class PopePluginFunctionalTest {
                 .build()
 
         assertTrue(
-            installResult.output.contains("resolved 2 dependencies"),
+            installResult.output.contains("Resolved 2 dependencies:"),
             "Expected both the direct and transitive dependency resolved, got:\n${installResult.output}",
         )
         assertTrue(
@@ -551,10 +551,12 @@ class PopePluginFunctionalTest {
                 .toString(2),
         )
 
-        val installResult = run(projectDir, "popeInstall")
+        // greeter is a direct-source dependency (not from any registry), so it needs
+        // -PpopeTrustAll here - TestKit runs non-interactively, with no one to answer the trust prompt.
+        val installResult = run(projectDir, "popeInstall", "-PpopeTrustAll")
 
         assertTrue(
-            installResult.output.contains("resolved 2 dependencies"),
+            installResult.output.contains("Resolved 2 dependencies:"),
             "Expected both ba.calculator and its transitive greeter dependency resolved, got:\n${installResult.output}",
         )
         assertTrue(
@@ -633,7 +635,7 @@ class PopePluginFunctionalTest {
         val installResult = run(projectDir, "popeInstall")
 
         assertTrue(
-            installResult.output.contains("resolved 1 dependencies"),
+            installResult.output.contains("Resolved 1 dependency:"),
             "Expected the explicitly-selected registry-ba/calculator resolved, got:\n${installResult.output}",
         )
         assertTrue(

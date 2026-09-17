@@ -353,4 +353,79 @@ class DependencyResolverTest {
 
         assertEquals(setOf("calculator", "greeter"), resolved.keys)
     }
+
+    // --- direct-source trust gate ---
+
+    @Test
+    fun `a direct-source dependency invokes the trust gate with its package key, spec and path`() {
+        val remotesRoot = createTempDirectory("pope-resolver-direct-test").toFile()
+        val greeterRepo = directSourceRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+
+        val calls = mutableListOf<Triple<String, DependencySpec.DirectSource, List<String>>>()
+        DependencyResolver.resolveAll(
+            mapOf("greeter" to DependencySpec.DirectSource(greeterRepo.absolutePath, "v1.0.1")),
+            PoisonRegistry,
+            directSourceCacheDir(),
+        ) { packageKey, spec, path -> calls.add(Triple(packageKey, spec, path)) }
+
+        assertEquals(1, calls.size)
+        assertEquals("greeter", calls[0].first)
+        assertEquals(greeterRepo.absolutePath, calls[0].second.repoUrl)
+        assertEquals(emptyList(), calls[0].third)
+    }
+
+    @Test
+    fun `the trust gate rejecting a direct-source dependency fails the resolve, before it's fetched`() {
+        val remotesRoot = createTempDirectory("pope-resolver-direct-test").toFile()
+        val greeterRepo = directSourceRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+
+        val error =
+            assertFailsWith<IllegalStateException> {
+                DependencyResolver.resolveAll(
+                    mapOf("greeter" to DependencySpec.DirectSource(greeterRepo.absolutePath, "v1.0.1")),
+                    PoisonRegistry,
+                    directSourceCacheDir(),
+                ) { _, _, _ -> throw IllegalStateException("not trusted") }
+            }
+        assertTrue(error.message!!.contains("not trusted"))
+    }
+
+    @Test
+    fun `a registry dependency never invokes the direct-source trust gate`() {
+        val root = registryRoot()
+        addPackage(root, "example.calculator", "1.0.0")
+        val registry = LocalDirectoryRegistry(root)
+
+        DependencyResolver.resolveAll(
+            versionMap("example.calculator" to "^1.0.0"),
+            registry,
+            directSourceCacheDir(),
+        ) { packageKey, _, _ -> throw AssertionError("trust gate should never be called for registry dep \"$packageKey\"") }
+    }
+
+    @Test
+    fun `a transitive direct-source dependency reaches the trust gate with its parent chain in path`() {
+        val remotesRoot = createTempDirectory("pope-resolver-direct-test").toFile()
+        val greeterRepo = directSourceRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+
+        val calculatorRegistryRoot = registryRoot()
+        addPackageWithRawDeps(
+            calculatorRegistryRoot,
+            "ba.calculator",
+            "1.0.1",
+            """"greeter": { "repoUrl": "${greeterRepo.absolutePath.replace("\\", "\\\\")}", "ref": "v1.0.1" }""",
+        )
+        val delegate = LocalDirectoryRegistry(calculatorRegistryRoot)
+        val prefixRegistry =
+            pope.registry.PrefixRoutingRegistry(listOf(pope.registry.RegistryEntry("ba", "ba.", delegate)))
+
+        var capturedPath: List<String>? = null
+        DependencyResolver.resolveAll(
+            versionMap("ba.calculator" to "^1.0.0"),
+            prefixRegistry,
+            directSourceCacheDir(),
+        ) { _, _, path -> capturedPath = path }
+
+        assertEquals(listOf("ba.calculator"), capturedPath)
+    }
 }
