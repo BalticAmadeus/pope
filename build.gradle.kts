@@ -321,6 +321,31 @@ tasks.register("scaffoldProject") {
             }
         }
 
+        // .gitignore: pope_packages/ (full copies of every resolved dependency's
+        // source, entirely regenerable from pope.lock + registries - same role
+        // as node_modules/) and Gradle's own local build/cache dir don't belong
+        // in source control. Non-destructive: only appends whichever entry isn't
+        // already present anywhere in an existing file, never overwrites it.
+        val gradleCacheEntry = if (legacyLayout) ".gradle/" else ".pope/.gradle/"
+        val gitignoreEntries = listOf("pope_packages/", gradleCacheEntry)
+        val gitignoreFile = File(targetDir, ".gitignore")
+        val existingGitignoreLines =
+            if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()
+        val missingGitignoreEntries = gitignoreEntries.filter { it !in existingGitignoreLines }
+        if (missingGitignoreEntries.isNotEmpty()) {
+            if (!gitignoreFile.exists()) {
+                gitignoreFile.writeText(missingGitignoreEntries.joinToString("\n", postfix = "\n"))
+                logger.lifecycle("  + generated .gitignore (${missingGitignoreEntries.joinToString(", ")})")
+            } else {
+                val needsLeadingNewline =
+                    gitignoreFile.length() > 0 && !gitignoreFile.readText().endsWith("\n")
+                gitignoreFile.appendText(
+                    (if (needsLeadingNewline) "\n" else "") + missingGitignoreEntries.joinToString("\n", postfix = "\n"),
+                )
+                logger.lifecycle("  + added ${missingGitignoreEntries.joinToString(", ")} to .gitignore")
+            }
+        }
+
         logger.lifecycle("")
         logger.lifecycle("pope wiring is set up at ${targetDir.path}")
         if (registries.isEmpty()) {
