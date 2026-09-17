@@ -215,8 +215,13 @@ tasks.register("scaffoldProject") {
             logger.warn("  ${settingsFile.path} already exists - left untouched. Needs: includeBuild(\"$popeToolPath\")")
         }
 
+        // gradle.properties holds popeToolPath - machine-specific (wherever *this*
+        // developer cloned pope, relative to this project), so it's only ever
+        // written fresh, never committed for someone else to inherit a
+        // possibly-wrong value - see the .gitignore entry below.
         val propertiesFile = File(gradleFilesDir, "gradle.properties")
-        if (!propertiesFile.exists()) {
+        val gradlePropertiesFreshlyGenerated = !propertiesFile.exists()
+        if (gradlePropertiesFreshlyGenerated) {
             propertiesFile.writeText(renderTemplate("gradle.properties.template", mapOf("POPE_TOOL_PATH" to popeToolPath)))
         } else {
             logger.warn("  ${propertiesFile.path} already exists - left untouched. Needs: popeToolPath=$popeToolPath")
@@ -327,7 +332,17 @@ tasks.register("scaffoldProject") {
         // in source control. Non-destructive: only appends whichever entry isn't
         // already present anywhere in an existing file, never overwrites it.
         val gradleCacheEntry = if (legacyLayout) ".gradle/" else ".pope/.gradle/"
-        val gitignoreEntries = listOf("pope_packages/", gradleCacheEntry)
+        val gradlePropertiesEntry = if (legacyLayout) "gradle.properties" else ".pope/gradle.properties"
+        val gitignoreEntries =
+            listOfNotNull(
+                "pope_packages/",
+                gradleCacheEntry,
+                // Only ignore it when pope generated it fresh this run - an
+                // already-existing (and presumably intentionally committed)
+                // gradle.properties from before this fix is left as the
+                // project's own call, not silently reinterpreted here.
+                gradlePropertiesEntry.takeIf { gradlePropertiesFreshlyGenerated },
+            )
         val gitignoreFile = File(targetDir, ".gitignore")
         val existingGitignoreLines =
             if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()

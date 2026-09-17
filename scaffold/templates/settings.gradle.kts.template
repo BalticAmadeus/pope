@@ -5,10 +5,19 @@ pluginManagement {
     // live at the project root or, for projects using the .pope/ layout,
     // inside .pope/ - either way popeToolPath is a path to that clone,
     // relative to wherever this file itself sits.
-    // popeToolPath (gradle.properties) controls where that clone is -
-    // override it, or switch this to a published-plugin version
-    // reference instead once that's set up for real.
-    includeBuild(providers.gradleProperty("popeToolPath").getOrElse("{{POPE_TOOL_PATH}}"))
+    //
+    // popeToolPath comes from gradle.properties next to this file, which is
+    // gitignored (it's machine-specific - wherever *you* cloned pope,
+    // relative to this project) - never a shared fallback baked in here,
+    // since that would silently point at whoever first scaffolded this
+    // project's own clone location instead of yours.
+    val popeToolPath =
+        providers.gradleProperty("popeToolPath").getOrNull()
+            ?: error(
+                "popeToolPath is not set. Create gradle.properties next to this settings.gradle.kts with:\n" +
+                    "  popeToolPath=<path to your own pope clone, relative or absolute>",
+            )
+    includeBuild(popeToolPath)
 }
 
 rootProject.name = "{{ROOT_PROJECT_NAME}}"
