@@ -189,6 +189,23 @@ class CatalogRegistryTest {
     }
 
     @Test
+    fun `suggestAny finds the closest local name for a typo, without fetching, and null when nothing is close`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertEquals("example.calculator", registry.suggestAny("example.claculator"))
+        assertNull(registry.suggestAny("example.zzzzzzzzzzzz"))
+        assertFalse(
+            File(cacheDir, "example.calculator").exists(),
+            "Expected suggestAny to never fetch the real package either",
+        )
+    }
+
+    @Test
     fun `a second resolve reuses the cached catalog and package clones without error`() {
         val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
         val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")

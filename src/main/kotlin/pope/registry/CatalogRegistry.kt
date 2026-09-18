@@ -79,6 +79,12 @@ class CatalogRegistry(
         return findAllReferences(localName).isNotEmpty()
     }
 
+    override fun suggestAny(packageName: String): String? {
+        val localName = localNameOf(packageName)
+        ensureCatalogCloned()
+        return DidYouMean.suggest(localName, allLocalNames())
+    }
+
     private fun localNameOf(packageName: String): String {
         require(packageName.startsWith(prefix)) {
             "\"$packageName\" doesn't start with registry \"$registryName\"'s configured prefix \"$prefix\" " +

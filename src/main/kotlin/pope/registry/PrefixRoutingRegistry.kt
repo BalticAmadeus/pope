@@ -51,6 +51,10 @@ class PrefixRoutingRegistry(private val entries: List<RegistryEntry>) : Registry
             .filter { entry -> entry.registry.hasAny(entry.prefix + localName) }
             .map { entry -> entry to "${entry.name}/$localName" }
 
+    /** First "did you mean X?" match across every registry (Registry.suggestAny), in "registryName/localName" form. */
+    fun suggestAcrossRegistries(localName: String): String? =
+        entries.firstNotNullOfOrNull { entry -> entry.registry.suggestAny(entry.prefix + localName)?.let { "${entry.name}/$it" } }
+
     override fun resolve(packageName: String, versionSpec: String): ResolvedPackage {
         val (registry, fullName) = routeExplicit(packageName) ?: (route(packageName) to packageName)
         return registry.resolve(fullName, versionSpec)

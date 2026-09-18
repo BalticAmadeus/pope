@@ -41,7 +41,8 @@ registries:
   entries no longer part of the resolved graph.
 - **`pope uninstall <package>`** - removes a dependency and cleans up its
   `pope_packages/`/`pope.lock`/`buildPath` entries in one step. A bare
-  local name works too if it matches exactly one declared dependency.
+  local name works too if it matches exactly one declared dependency, and
+  a typo gets a "did you mean X?" prompt against your declared dependencies.
 - **Bare-name install** - `pope install <name>` with no registry given
   searches every configured registry; auto-installs on one match, prompts
   to choose on several. Typos get a "did you mean X?" prompt too.

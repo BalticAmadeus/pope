@@ -898,6 +898,62 @@ class PopePluginFunctionalTest {
         )
     }
 
+    @Test
+    fun `a bare name typo with no exact match anywhere still gets a did-you-mean suggestion across registries`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-bare-typo-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-bare-typo-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-bare-typo-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "bare-typo-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "bare-typo-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .toString(2),
+        )
+
+        // "claculator" matches no configured prefix (route() fails first, same as a bare name
+        // always does) AND has no exact hasAny match anywhere (findAcrossRegistries fails too) -
+        // this is the case that used to fall through to the plain routing error with no suggestion.
+        val installResult =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall", "-PpopeAdd=claculator")
+                .buildAndFail()
+
+        assertTrue(
+            installResult.output.contains("did you mean \"registry-ba/calculator\"?"),
+            "Expected a cross-registry did-you-mean suggestion even though no prefix matched at all, got:\n${installResult.output}",
+        )
+    }
+
     // --- shared registry root: multiple packages, one pope_packages/<registryName> folder ---
 
     private fun addCatalogReference(catalogDir: File, localName: String, version: String, repoDir: File, ref: String) {
@@ -1538,6 +1594,28 @@ class PopePluginFunctionalTest {
         assertTrue(
             result.output.contains("example.nonexistent") && result.output.contains("not declared"),
             "Expected a clear error naming example.nonexistent, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `popeUninstall suggests the closest declared dependency for a typo, not just a bare-name match`() {
+        val (_, projectDir) = buildTwoIndependentPackagesProject()
+        run(projectDir, "popeInstall")
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeUninstall", "-PpopeUninstall=exmaple.beta")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("did you mean \"example.beta\"?"),
+            "Expected a did-you-mean suggestion naming the close declared dependency, got:\n${result.output}",
+        )
+        assertTrue(
+            JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies").has("example.beta"),
+            "Expected the declined/non-interactive suggestion to leave dependencies untouched",
         )
     }
 

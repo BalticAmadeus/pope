@@ -18,6 +18,7 @@ import pope.registry.RegistriesPropertiesFile
 import pope.registry.RegistryEntry
 import pope.registry.ResolvedPackage
 import pope.resolver.DependencyResolver
+import pope.suggest.DidYouMean
 import pope.suggest.NameNotFoundException
 import pope.suggest.NoRegistryPrefixMatchException
 import pope.trust.TrustPrompt
@@ -278,7 +279,8 @@ class PopePlugin : Plugin<Project> {
             task.description =
                 "Removes a dependency and cleans up its pope_packages/pope.lock/buildPath entries. " +
                 "Usage: -PpopeUninstall=<package_name> - a bare local name matching more than one " +
-                "declared \"registryName/localName\" dependency prompts to choose which one."
+                "declared \"registryName/localName\" dependency prompts to choose which one, and a " +
+                "close-but-not-declared name (typo) prompts to uninstall the suggested one instead."
             task.doLast {
                 project.logger.lifecycle("=== pope uninstall ===")
                 project.logger.lifecycle("")
@@ -521,24 +523,35 @@ private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
  * Resolves -PpopeUninstall=<spec> against the manifest's own declared dependency keys - no registry
  * search, since uninstall only ever targets something already declared. An exact key match wins
  * outright; otherwise spec is treated as a bare local name and matched against the local-name half
- * of any declared "registryName/localName" key. Zero matches is a loud error; one auto-picks; more
- * than one prompts the user to choose.
+ * of any declared "registryName/localName" key (zero matches falls through to a typo suggestion
+ * below; one auto-picks; more than one prompts the user to choose). If nothing matches even as a
+ * bare local name, DidYouMean looks for a close typo among every declared key (and their local-name
+ * halves) and prompts to uninstall that instead - same "did you mean X?" shape as install.
  */
 private fun resolveUninstallSpec(spec: String, declaredKeys: Set<String>, userInputHandler: UserInputHandler): String {
     if (spec in declaredKeys) return spec
 
     val matches = declaredKeys.filter { it.substringAfterLast('/', missingDelimiterValue = "") == spec }
-    return when (matches.size) {
-        0 -> throw GradleException("\"$spec\" is not declared in dependencies - nothing to uninstall.")
-        1 -> matches.single()
+    when (matches.size) {
+        0 -> {}
+        1 -> return matches.single()
         else ->
-            userInputHandler.askUser { questions ->
+            return userInputHandler.askUser { questions ->
                 questions.choice(
                     "\"$spec\" matches more than one declared dependency - which one do you want to uninstall?",
                     matches,
                 ).ask()
             }.getOrElse(matches.first())
     }
+
+    val candidateKeysByText = declaredKeys.associateWith { it } + declaredKeys.filter { '/' in it }.associateBy { it.substringAfterLast('/') }
+    val suggestion =
+        DidYouMean.suggest(spec, candidateKeysByText.keys)?.let { candidateKeysByText.getValue(it) }
+            ?: throw GradleException("\"$spec\" is not declared in dependencies - nothing to uninstall.")
+    val question = "\"$spec\" is not declared in dependencies - did you mean \"$suggestion\"?"
+    val approved = userInputHandler.askYesNoQuestion(question) ?: false
+    if (!approved) throw GradleException(question)
+    return suggestion
 }
 
 /** Parses -PpopeAdd=<name>[:<versionSpec>]; no versionSpec means "whatever's available", pinned as ^version. */
@@ -554,7 +567,8 @@ private fun resolveAddSpec(addSpec: String, registry: Registry, userInputHandler
 
 /**
  * findAny(), but a "did you mean X?" suggestion becomes a yes/no prompt instead of just failing,
- * and a bare name matching no registry prefix falls back to searching every registry.
+ * and a bare name matching no registry prefix falls back to searching every registry - by exact
+ * name first, then (if nothing has it exactly) by "did you mean X?" across every registry too.
  */
 private fun findAnyConfirmingTypo(
     packageName: String,
@@ -572,7 +586,14 @@ private fun findAnyConfirmingTypo(
             if (!approved) throw e
             return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
         } catch (e: NoRegistryPrefixMatchException) {
-            return findAcrossRegistries(packageName, registry, userInputHandler) ?: throw e
+            findAcrossRegistries(packageName, registry, userInputHandler)?.let { return it }
+            val suggestion = (registry as? PrefixRoutingRegistry)?.suggestAcrossRegistries(packageName) ?: throw e
+            // The suggestion is folded into the re-thrown message too (not just the prompt) so a
+            // declined/non-interactive run's failure output still shows it, same as NameNotFoundException.
+            val question = "${e.message} - did you mean \"$suggestion\"?"
+            val approved = userInputHandler.askYesNoQuestion(question) ?: false
+            if (!approved) throw NoRegistryPrefixMatchException(question)
+            return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
         }
     return packageName to found
 }

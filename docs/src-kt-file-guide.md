@@ -116,13 +116,19 @@ The entry point. Everything starts here.
     keys (no registry search — uninstall only ever targets something
     already declared): an exact key wins outright, otherwise `spec` is
     matched as a bare local name against the local-name half of any
-    declared `"registryName/localName"` key, auto-picking on one match and
-    prompting on several.
+    declared `"registryName/localName"` key (auto-picking on one match,
+    prompting on several), and if even that finds nothing, `DidYouMean`
+    looks for a close typo among every declared key and its local-name
+    half, prompting to uninstall that instead.
   - `findAnyConfirmingTypo(...)` — like `registry.findAny`, but a
     `NameNotFoundException` with a suggestion becomes an actual yes/no
     prompt ("did you mean X?") instead of just failing, and a bare name
     matching no configured registry prefix (`NoRegistryPrefixMatchException`)
-    falls back to `findAcrossRegistries`.
+    falls back first to `findAcrossRegistries` (exact match), then to a
+    "did you mean X?" prompt built from `PrefixRoutingRegistry.suggestAcrossRegistries`
+    if even that finds nothing exact. A decline/non-interactive run
+    re-throws a new exception with the suggestion folded into its message
+    (not the original), so the failure output still shows it.
   - `findAcrossRegistries(localName, registry, userInputHandler)` — searches
     every configured registry (`PrefixRoutingRegistry.findAllMatches`, no
     package fetch) for a bare name. Zero matches returns null (caller
@@ -219,6 +225,11 @@ Pure data. No logic.
     `findAny(packageName) != null`; `CatalogRegistry` overrides it to avoid
     that fetch. Used by `PrefixRoutingRegistry.findAllMatches` to search
     every registry for a bare name without pulling anything down.
+  - `suggestAny(packageName): String?` — cheap "did you mean X?" lookup,
+    same cost/scope constraints as `hasAny`; defaults to `null`.
+    `CatalogRegistry` overrides it. Used by
+    `PrefixRoutingRegistry.suggestAcrossRegistries` when a bare name's typo
+    matches no registry exactly.
 - **`enum class InstallLayout`** — `SharedRegistryRoot` (packages share one
   `pope_packages/<installSubpath>/` folder — a registry's own name, or
   `"dependencies"` for direct-source deps) or `Isolated` (one dedicated
@@ -257,8 +268,9 @@ Pure data. No logic.
   package's catalog folder.
 - `resolve` picks the highest version satisfying the caret range;
   `findAny` picks the highest overall. Only the one chosen version is ever
-  fetched (via `GitPackageFetcher`). `hasAny` stops one step earlier —
-  checks the catalog has a reference, never fetches the package itself.
+  fetched (via `GitPackageFetcher`). `hasAny`/`suggestAny` stop one step
+  earlier — check/search the catalog's reference files, never fetch the
+  package itself.
 - `fetchAndBuild` sets `installSubpath` to this registry's own name (not
   its prefix) and `installLayout` to `SharedRegistryRoot`, so every package
   from this registry shares one `pope_packages/<registryName>/` folder.
@@ -280,6 +292,9 @@ Pure data. No logic.
   its `"registryName/localName"` form. Used by `PopePlugin.kt`'s
   `findAcrossRegistries` as the fallback when a bare name matches no
   configured prefix at all.
+- `suggestAcrossRegistries(localName)` — the first "did you mean X?" match
+  across every registry (`Registry.suggestAny`), in `"registryName/localName"`
+  form; used when `findAllMatches` found nothing exact either.
 - This is the registry `popeInstall` normally uses.
 
 ### `suggest/DidYouMean.kt`
@@ -461,9 +476,9 @@ repos where needed, with no Gradle build involved.
 | `manifest/PackageNameInferrerTest.kt` | Namespace extraction from `.cls` files; failure on disagreement or no matches |
 | `manifest/BuildPathUpdaterTest.kt` | Additive `ensureSourceEntries`; selective `pruneStalePopePackagesEntries` and its dry-run |
 | `manifest/DependenciesUpdaterTest.kt` | Adding a `dependencies` entry without disturbing the rest of the file |
-| `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `hasAny` (true/false, never fetches the package), `installSubpath`, error messages |
+| `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `hasAny`/`suggestAny` (true/false, closest typo match, never fetch the package), `installSubpath`, error messages |
 | `registry/LocalDirectoryRegistryTest.kt` | Folder-per-package discovery, version-range check, fallback behavior |
-| `registry/PrefixRoutingRegistryTest.kt` | Longest-prefix routing; explicit `registryName/localName` routing; `findAllMatches` across every registry; loud error on no match |
+| `registry/PrefixRoutingRegistryTest.kt` | Longest-prefix routing; explicit `registryName/localName` routing; `findAllMatches`/`suggestAcrossRegistries` across every registry; loud error on no match |
 | `registry/PackageMatcherTest.kt` | Unique match, `null` on none, loud error on multiple |
 | `registry/RegistriesPropertiesFileTest.kt` | Reading entries, append-only `add`, duplicate name/prefix refusal |
 | `suggest/DidYouMeanTest.kt` | Closest-match suggestion by edit distance; `null` when nothing is close enough |

@@ -8,12 +8,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private class FakeRegistry(private val label: String) : Registry {
+private class FakeRegistry(private val label: String, private val suggestion: String? = null) : Registry {
     override fun resolve(packageName: String, versionSpec: String) =
         ResolvedPackage(packageName, "1.0.0", File(label), File(label))
 
     override fun findAny(packageName: String): ResolvedPackage? =
         if (packageName.contains("missing")) null else ResolvedPackage(packageName, "1.0.0", File(label), File(label))
+
+    override fun suggestAny(packageName: String): String? = suggestion
 }
 
 class PrefixRoutingRegistryTest {
@@ -154,5 +156,27 @@ class PrefixRoutingRegistryTest {
 
         assertFailsWith<NoRegistryPrefixMatchException> { registry.resolve("acme", "^1.0.0") }
         assertEquals(listOf("registry-ba/acme"), registry.findAllMatches("acme").map { it.second })
+    }
+
+    // --- suggestAcrossRegistries: "did you mean X?" across every registry ---
+
+    @Test
+    fun `suggestAcrossRegistries returns null when no registry has a suggestion`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw"))),
+            )
+
+        assertNull(registry.suggestAcrossRegistries("claculator"))
+    }
+
+    @Test
+    fun `suggestAcrossRegistries returns a match in registryName-localName form`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw", "calculator"))),
+            )
+
+        assertEquals("cw/calculator", registry.suggestAcrossRegistries("claculator"))
     }
 }

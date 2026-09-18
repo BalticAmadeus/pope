@@ -29,4 +29,7 @@ interface Registry {
 
     /** Cheap existence check - catalog/metadata only, must never fetch the real package content. */
     fun hasAny(packageName: String): Boolean = findAny(packageName) != null
+
+    /** Cheap "did you mean X?" lookup, same cost/scope constraints as hasAny; null if nothing close. */
+    fun suggestAny(packageName: String): String? = null
 }
