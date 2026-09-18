@@ -2,18 +2,14 @@ package pope.registry
 
 import pope.suggest.DidYouMean
 import pope.suggest.NameNotFoundException
+import pope.suggest.NoRegistryPrefixMatchException
 
 /** One configured registry: its DSL/properties label, its routing prefix, and the Registry that serves it. */
 data class RegistryEntry(val name: String, val prefix: String, val registry: Registry)
 
 /**
- * Routes a package_name to one registry, two ways:
- *  - "registryName/localName" - explicit: bypasses prefix matching entirely, resolves directly
- *    against the named registry, reconstructing its real prefixed name ("prefix" + "localName")
- *    before delegating - so the delegate registry sees a normally-prefixed name exactly as it
- *    would from the implicit path below, unchanged.
- *  - anything else - implicit: routed by longest matching prefix. No match is a loud error, not a
- *    silent fallback.
+ * Routes a package_name to one registry: "registryName/localName" resolves explicitly against
+ * that registry; anything else routes by longest matching prefix. No match is a loud error.
  */
 class PrefixRoutingRegistry(private val entries: List<RegistryEntry>) : Registry {
     private val byName: Map<String, RegistryEntry> = entries.associateBy { it.name }
@@ -24,7 +20,7 @@ class PrefixRoutingRegistry(private val entries: List<RegistryEntry>) : Registry
             .filter { (prefix, _) -> packageName.startsWith(prefix) }
             .maxByOrNull { (prefix, _) -> prefix.length }
             ?.value
-            ?: throw IllegalStateException(
+            ?: throw NoRegistryPrefixMatchException(
                 "No configured registry prefix matches \"$packageName\" " +
                     "(configured prefixes: ${delegatesByPrefix.keys.joinToString(", ")})",
             )
@@ -42,15 +38,18 @@ class PrefixRoutingRegistry(private val entries: List<RegistryEntry>) : Registry
                 throw NameNotFoundException(
                     "No registry named \"$registryName\" is configured " +
                         "(configured registry names: ${byName.keys.joinToString(", ")})" +
-                        // Names only the registry itself, not "$it/$localName" - localName hasn't
-                        // been validated yet at this point, so implying it's already confirmed
-                        // correct here would be misleading.
                         (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
                     suggestion = suggestion?.let { "$it/$localName" },
                 )
             }
         return entry.registry to (entry.prefix + localName)
     }
+
+    /** Every registry that has this bare local name (Registry.hasAny - no package fetch), paired with its "registryName/localName" form. */
+    fun findAllMatches(localName: String): List<Pair<RegistryEntry, String>> =
+        entries
+            .filter { entry -> entry.registry.hasAny(entry.prefix + localName) }
+            .map { entry -> entry to "${entry.name}/$localName" }
 
     override fun resolve(packageName: String, versionSpec: String): ResolvedPackage {
         val (registry, fullName) = routeExplicit(packageName) ?: (route(packageName) to packageName)

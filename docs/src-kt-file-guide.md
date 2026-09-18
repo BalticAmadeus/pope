@@ -11,15 +11,15 @@ walkthrough sections instead. This doc is the reference; that one is the tour.
 ## The big picture
 
 `pope` is a Gradle plugin. One project builds one JAR. Another ABL project
-applies that JAR and gains four Gradle tasks: `popeInstall`, `popePropath`,
-`popePrune`, `popeRegistryAdd`.
+applies that JAR and gains five Gradle tasks: `popeInstall`, `popePropath`,
+`popePrune`, `popeUninstall`, `popeRegistryAdd`.
 
 The code is split into small single-purpose packages under
 `src/main/kotlin/pope/`:
 
 | Package | Responsibility |
 |---|---|
-| `pope` (root) | The plugin entry point and the four task definitions |
+| `pope` (root) | The plugin entry point and the five task definitions |
 | `manifest/` | Read and write a project's `openedge-project.json` |
 | `registry/` | Given a package name + version range, find the package |
 | `fetch/` | Actually pull a package's files down with `git` |
@@ -27,6 +27,8 @@ The code is split into small single-purpose packages under
 | `lock/` + `integrity/` | Write `pope.lock` and detect tampered packages |
 | `propath/` | Turn source roots into an ABL PROPATH |
 | `version/` | Parse `X.Y.Z` and match `^X.Y.Z` ranges |
+| `suggest/` | "Did you mean X?" typo suggestions and the exceptions that carry them |
+| `trust/` | Confirmation prompt for direct-source (non-registry) dependencies |
 
 Data flows roughly left to right: `manifest` tells you what is wanted,
 `registry` + `fetch` + `resolver` work out and retrieve what that means,
@@ -42,8 +44,8 @@ The entry point. Everything starts here.
 
 - **`class PopePlugin : Plugin<Project>`** — Gradle instantiates this and
   calls `apply(project)` once when a build script does
-  `id("io.github.balticamadeus.pope")`. `apply()` registers the four tasks and
-  creates the `pope { }` configuration block.
+  `id("io.github.balticamadeus.pope")`. `apply()` registers the five tasks
+  and creates the `pope { }` configuration block.
 - **`abstract class PopeExtension`** — the `pope { }` block you can put in a
   consumer's `build.gradle.kts`. Properties:
   - `projectRoot` — where the ABL project actually lives. Defaults to the
@@ -58,37 +60,65 @@ The entry point. Everything starts here.
   is just a DSL label; `prefix` (e.g. `"ba."`) is the real routing key,
   `catalogUrl` points at the catalog git repo, `catalogRef` is the branch
   (default `"main"`).
-- **The four `project.tasks.register(...)` blocks** — each defines one
+- **The five `project.tasks.register(...)` blocks** — each defines one
   task's `group`, `description`, and `doLast { }` body (the code that runs
   when you invoke the task):
   - **`popeInstall`** — reads the manifest, builds the `Registry`, resolves
     the full graph via `DependencyResolver`, integrity-checks each package
-    against `pope.lock` *before* copying anything, copies each package into
-    `pope_packages/<subpath>/src`, then writes `pope.lock`, updates
+    against `pope.lock` *before* copying anything, installs each package
+    (`installPackage` — see below), then writes `pope.lock`, updates
     `dependencies` (only if `-PpopeAdd` was used), and updates `buildPath`.
     Order matters: nothing touches disk until resolution has fully
-    succeeded.
+    succeeded. A direct-source dependency not already trusted in
+    `pope.lock` prompts via `TrustPrompt` before it's fetched; `-PpopeTrustAll`
+    skips the prompt (CI).
   - **`popePropath`** — reads the manifest, calls `PropathGenerator`,
     prints the resulting absolute paths. Read-only.
   - **`popePrune`** — re-resolves the graph the same way `popeInstall`
-    does, then deletes any `pope_packages/` folder and `buildPath` entry
+    does, then deletes any `pope_packages/` entry and `buildPath` entry
     that is no longer part of that graph. `-PpopeDryRun` reports without
     deleting.
+  - **`popeUninstall`** — `-PpopeUninstall=<package_name>` removes one
+    dependency, re-resolves what's left (so anything it alone pulled in
+    transitively is cleaned up too, same as `popePrune`), and updates
+    `pope_packages/`/`pope.lock`/`buildPath` accordingly. Carries forward
+    `trustedDirectSources` entries for packages still in the graph, rather
+    than dropping them all.
   - **`popeRegistryAdd`** — appends one entry to
     `pope-registries.properties` via `RegistriesPropertiesFile.add`.
 - **Private helper functions at the bottom of the file:**
   - `buildRegistry(extension)` — merges `registries { }` (from the build
     script) and `pope-registries.properties` (from the CLI) into a single
-    `PrefixRoutingRegistry`. A prefix declared twice in either source is an
-    error. Falls back to `LocalDirectoryRegistry` only when both sources
-    are empty.
-  - `findStalePopePackagesDirs(...)` / `removeNowEmptyAncestors(...)` —
-    used by `popePrune` to find `src` folders under `pope_packages/` that
-    are not in the expected set, and to clean up emptied-out parent
-    folders afterward.
-  - `resolveAddSpec(addSpec, registry)` — parses `-PpopeAdd=name[:range]`.
-    With no `:range`, it calls `registry.findAny(name)` to discover a
-    version and pins it as `^version`.
+    `PrefixRoutingRegistry`. A prefix *or* a name declared twice, in either
+    source, is an error (a dependency can address a registry directly by
+    name — see `PrefixRoutingRegistry.kt` below). Falls back to
+    `LocalDirectoryRegistry` only when both sources are empty.
+  - `buildPathEntryFor(packageKey, resolvedPackage)` — the `buildPath`
+    source entry for a resolved package: one shared entry per registry for
+    `InstallLayout.SharedRegistryRoot`, one per-package `.../src` entry for
+    `Isolated`.
+  - `installPackage(...)` / `deleteInstalledPackage(...)` — install/remove
+    one resolved package under `pope_packages/`. For
+    `SharedRegistryRoot`, only that package's own files are touched (copied
+    in, and anything dropped by a version bump removed) since the folder is
+    shared with sibling packages; for `Isolated`, the whole dedicated
+    folder is wiped and recopied.
+  - `removeNowEmptyAncestors(dir, stopAt)` — deletes now-empty ancestor
+    directories after a package's files are removed (e.g. an emptied-out
+    registry folder), used by `popePrune`/`popeUninstall`.
+  - `resolveAddSpec(addSpec, registry, userInputHandler)` — parses
+    `-PpopeAdd=name[:range]`. With no `:range`, delegates to
+    `findAnyConfirmingTypo` to discover a version and pins it as `^version`.
+  - `findAnyConfirmingTypo(...)` — like `registry.findAny`, but a
+    `NameNotFoundException` with a suggestion becomes an actual yes/no
+    prompt ("did you mean X?") instead of just failing, and a bare name
+    matching no configured registry prefix (`NoRegistryPrefixMatchException`)
+    falls back to `findAcrossRegistries`.
+  - `findAcrossRegistries(localName, registry, userInputHandler)` — searches
+    every configured registry (`PrefixRoutingRegistry.findAllMatches`, no
+    package fetch) for a bare name. Zero matches returns null (caller
+    rethrows the original error, unchanged); one match installs silently;
+    more than one prompts the user to choose which registry.
 
 ### `manifest/Manifest.kt`
 
@@ -175,12 +205,22 @@ Pure data. No logic.
     version satisfying the range, fetch it.
   - `findAny(packageName): ResolvedPackage?` — find the highest available
     version, ignoring any range. Used when the user did not specify one.
+  - `hasAny(packageName): Boolean` — cheap existence check, catalog/metadata
+    only, must never fetch the real package content. Defaults to
+    `findAny(packageName) != null`; `CatalogRegistry` overrides it to avoid
+    that fetch. Used by `PrefixRoutingRegistry.findAllMatches` to search
+    every registry for a bare name without pulling anything down.
+- **`enum class InstallLayout`** — `SharedRegistryRoot` (packages share one
+  `pope_packages/<installSubpath>/` folder — a registry's own name, or
+  `"dependencies"` for direct-source deps) or `Isolated` (one dedicated
+  `pope_packages/<installSubpath ?: packageName>/src/` per package, the
+  `LocalDirectoryRegistry` fallback only).
 - **`data class ResolvedPackage`** — the result: `packageName`, `version`,
   `sourceDir` (the folder to copy onto PROPATH), `projectDir` (the
   package's own root, where *its* `openedge-project.json` lives, needed
-  for transitive resolution), and `installSubpath` (a cosmetic hint for
-  where under `pope_packages/` this should nest, e.g. `"ba/calculator"`;
-  `null` means use the package name directly).
+  for transitive resolution), `installSubpath` (where under
+  `pope_packages/` this nests; `null` means use the package name directly),
+  and `installLayout` (see above).
 
 ### `registry/LocalDirectoryRegistry.kt`
 
@@ -208,17 +248,65 @@ Pure data. No logic.
   package's catalog folder.
 - `resolve` picks the highest version satisfying the caret range;
   `findAny` picks the highest overall. Only the one chosen version is ever
-  fetched (via `GitPackageFetcher`).
-- `fetchAndBuild` sets `installSubpath` to `"<prefix>/<localName>"` so the
-  install layout is nested by registry.
+  fetched (via `GitPackageFetcher`). `hasAny` stops one step earlier —
+  checks the catalog has a reference, never fetches the package itself.
+- `fetchAndBuild` sets `installSubpath` to this registry's own name (not
+  its prefix) and `installLayout` to `SharedRegistryRoot`, so every package
+  from this registry shares one `pope_packages/<registryName>/` folder.
 
 ### `registry/PrefixRoutingRegistry.kt`
 
-- **`class PrefixRoutingRegistry(delegatesByPrefix)`** — a `Registry` that
-  owns no packages itself. It routes each package name to the delegate
-  registry whose prefix matches, longest prefix wins.
-- No matching prefix is a loud error, never a silent fallback.
+- **`data class RegistryEntry(name, prefix, registry)`** — one configured
+  registry: its DSL/properties label, its routing prefix, and the
+  `Registry` that serves it.
+- **`class PrefixRoutingRegistry(entries)`** — a `Registry` that owns no
+  packages itself. Routes a package name two ways:
+  - `"registryName/localName"` — explicit, bypasses prefix matching, looks
+    up the named registry by `RegistryEntry.name` and reconstructs its real
+    prefixed name (`prefix + localName`) before delegating.
+  - anything else — implicit, routed by longest matching prefix. No match
+    throws `NoRegistryPrefixMatchException`, never a silent fallback.
+- `findAllMatches(localName)` — every registry that has this bare local
+  name, found cheaply via `Registry.hasAny` (no package fetch), paired with
+  its `"registryName/localName"` form. Used by `PopePlugin.kt`'s
+  `findAcrossRegistries` as the fallback when a bare name matches no
+  configured prefix at all.
 - This is the registry `popeInstall` normally uses.
+
+### `suggest/DidYouMean.kt`
+
+- **`object DidYouMean`**, one function `suggest(input, candidates): String?`.
+- Closest candidate by Levenshtein edit distance, within a length-scaled
+  threshold; `null` if nothing is close enough to be a useful guess rather
+  than a wild one.
+
+### `suggest/NameNotFoundException.kt`
+
+- **`class NameNotFoundException(message, suggestion: String?)`** — thrown
+  when a name isn't found; `suggestion`, if non-null, is the ready-to-use
+  corrected name (already in whatever form the caller passed in) a catcher
+  can retry directly with. Thrown by `CatalogRegistry.resolve` and
+  `PrefixRoutingRegistry.routeExplicit`; turned into an interactive
+  yes/no prompt by `PopePlugin.kt`'s `findAnyConfirmingTypo`.
+
+### `suggest/NoRegistryPrefixMatchException.kt`
+
+- **`class NoRegistryPrefixMatchException(message)`** — thrown by
+  `PrefixRoutingRegistry.route()` when a bare/dotted name matches no
+  configured prefix at all. Distinguished from other `IllegalStateException`s
+  (e.g. a real "no version satisfies" failure) so `PopePlugin.kt` knows
+  exactly when to fall back to searching every registry.
+
+### `trust/TrustPrompt.kt`
+
+- **`object TrustPrompt`**, one function `confirm(userInputHandler,
+  packageKey, repoUrl, ref, path): Boolean`.
+- Asks the user to confirm before installing a direct-source dependency
+  (bypasses the registry catalog, points straight at an arbitrary git
+  repo). Goes through Gradle's own `UserInputHandler` so the prompt is
+  synchronized with the console renderer. No interactive input available
+  (e.g. CI) declines rather than silently proceeding — use `-PpopeTrustAll`
+  there instead.
 
 ### `registry/PackageMatcher.kt`
 
@@ -301,10 +389,19 @@ Pure data. No logic.
 
 ### `lock/LockfileReader.kt`
 
-- **`data class LockedPackage`** — `version`, `integrity`.
-- **`object LockfileReader`**, one function `read(file): Map<String, LockedPackage>`.
-- Reads the existing `pope.lock`'s `resolved` object, keyed by package
-  name. Missing file returns an empty map.
+- **`data class LockedPackage`** — `version`, `integrity`, `installSubpath`
+  (where it landed under `pope_packages/`; null for older lockfiles),
+  `files` (its own relative file paths, meaningful only for
+  `SharedRegistryRoot` packages — `install`/`uninstall`/`prune` touch only
+  these, never the whole shared folder).
+- **`object LockfileReader`**:
+  - `read(file): Map<String, LockedPackage>` — reads `pope.lock`'s
+    `resolved` object, keyed by package name. Missing file returns an
+    empty map.
+  - `readTrustedDirectSources(file): Map<String, String>` — reads
+    `trustedDirectSources` (package name → `"repoUrl@ref"`), so an
+    already-approved direct-source dependency isn't re-prompted while its
+    source hasn't changed.
 
 ### `lock/IntegrityChecker.kt`
 
@@ -355,15 +452,16 @@ repos where needed, with no Gradle build involved.
 | `manifest/PackageNameInferrerTest.kt` | Namespace extraction from `.cls` files; failure on disagreement or no matches |
 | `manifest/BuildPathUpdaterTest.kt` | Additive `ensureSourceEntries`; selective `pruneStalePopePackagesEntries` and its dry-run |
 | `manifest/DependenciesUpdaterTest.kt` | Adding a `dependencies` entry without disturbing the rest of the file |
-| `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `installSubpath`, error messages |
+| `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `hasAny` (true/false, never fetches the package), `installSubpath`, error messages |
 | `registry/LocalDirectoryRegistryTest.kt` | Folder-per-package discovery, version-range check, fallback behavior |
-| `registry/PrefixRoutingRegistryTest.kt` | Longest-prefix routing; loud error on no match |
+| `registry/PrefixRoutingRegistryTest.kt` | Longest-prefix routing; explicit `registryName/localName` routing; `findAllMatches` across every registry; loud error on no match |
 | `registry/PackageMatcherTest.kt` | Unique match, `null` on none, loud error on multiple |
 | `registry/RegistriesPropertiesFileTest.kt` | Reading entries, append-only `add`, duplicate name/prefix refusal |
+| `suggest/DidYouMeanTest.kt` | Closest-match suggestion by edit distance; `null` when nothing is close enough |
 | `fetch/GitCliTest.kt` | stdout capture, non-zero exit throwing, missing-`git` message |
 | `fetch/GitPackageFetcherTest.kt` | Bare-clone + worktree cache reuse, incremental fetch, stale worktree recovery |
 | `integrity/DirectoryHashTest.kt` | Stable hash regardless of walk order; changes on edit/rename |
-| `lock/LockfileReaderTest.kt` | Parsing `resolved` entries; empty map for a missing file |
+| `lock/LockfileReaderTest.kt` | Parsing `resolved` and `trustedDirectSources` entries; empty map for a missing file |
 | `lock/IntegrityCheckerTest.kt` | Pass when hashes match, throw on mismatch for a locked version, skip when version differs |
 | `resolver/DependencyResolverTest.kt` | Transitive resolution, version/kind conflicts, circular-dependency detection, namespace-collision check |
 | `propath/PropathGeneratorTest.kt` | Source roots to absolute paths; `includeTests` appends test roots after |
@@ -376,11 +474,13 @@ using Gradle's `TestKit`, not isolated function calls.
 - **`PopePluginFunctionalTest.kt`** — applies the plugin via `includeBuild`
   + `withPluginClasspath()`, using this repo's own fixture packages under
   `src/functionalTest/resources/fixtures/`, and actually runs
-  `popeInstall` / `popePropath` / `popeRegistryAdd`, asserting on real
-  task output and real files on disk. Covers transitive resolution,
-  version conflicts, the one-step add-and-install flow, merged
-  `registries{}` + properties-file config, `pope_packages/` nesting by
-  registry prefix vs. direct-source, and the `.pope/` layout where
+  `popeInstall` / `popePropath` / `popeUninstall` / `popeRegistryAdd`,
+  asserting on real task output and real files on disk. Covers transitive
+  resolution, version conflicts, the one-step add-and-install flow, merged
+  `registries{}` + properties-file config, the shared `pope_packages/<registryName>/`
+  root vs. direct-source `dependencies/` root, typo "did you mean X?"
+  prompts, bare-name install (search every registry, auto-install on one
+  match, disambiguate on several), and the `.pope/` layout where
   `projectRoot` points one level up.
 - **`PublishedPluginFunctionalTest.kt`** — proves the plugin can be applied
   the way a real separate consumer would: by plugin id + version resolved

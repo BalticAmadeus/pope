@@ -46,12 +46,7 @@ class CatalogRegistry(
             val suggestion = DidYouMean.suggest(localName, allLocalNames())
             throw NameNotFoundException(
                 "No package named \"$packageName\" found in registry \"$registryName\" catalog ($catalogUrl)" +
-                    // Names only the local name, not "registryName/localName" - the registry itself
-                    // was already valid to get here, so only the part actually in question is shown.
                     (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
-                // The retry value is still "registryName/localName" (the explicit syntax), not
-                // "prefix + localName" - always retries correctly regardless of whether this
-                // registry's own configured prefix happens to end in a separator or not.
                 suggestion = suggestion?.let { "$registryName/$it" },
             )
         }
@@ -76,6 +71,12 @@ class CatalogRegistry(
         val best = references.maxByOrNull { SemVer.parse(it.version) } ?: return null
 
         return fetchAndBuild(packageName, localName, best)
+    }
+
+    override fun hasAny(packageName: String): Boolean {
+        val localName = localNameOf(packageName)
+        ensureCatalogCloned()
+        return findAllReferences(localName).isNotEmpty()
     }
 
     private fun localNameOf(packageName: String): String {

@@ -716,6 +716,188 @@ class PopePluginFunctionalTest {
         )
     }
 
+    // --- bare-name install: search every registry, disambiguate if needed ---
+
+    @Test
+    fun `a bare name matching no registry at all fails exactly like today, with no silent search happening`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-bare-none-remotes").toFile()
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        git(catalogDir, "commit", "--allow-empty", "-m", "empty catalog")
+
+        val projectDir = createTempDirectory("pope-functional-test-bare-none-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-bare-none-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "bare-none-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "bare-none-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .toString(2),
+        )
+
+        val installResult =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall", "-PpopeAdd=calculator")
+                .buildAndFail()
+
+        assertTrue(
+            installResult.output.contains("No configured registry prefix matches \"calculator\""),
+            "Expected the same routing error as today (regression guard - the zero-match " +
+                "cross-registry search must stay invisible), got:\n${installResult.output}",
+        )
+    }
+
+    @Test
+    fun `a bare name found in exactly one registry installs, with the dependency key rewritten to registryName-localName`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-bare-one-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-bare-one-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-bare-one-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "bare-one-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "bare-one-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .toString(2),
+        )
+
+        val installResult = run(projectDir, "popeInstall", "-PpopeAdd=calculator")
+
+        assertTrue(
+            installResult.output.contains("added \"registry-ba/calculator\""),
+            "Expected the bare name to resolve to exactly one registry and be written under its " +
+                "explicit registryName/localName form, got:\n${installResult.output}",
+        )
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        assertTrue(
+            dependencies.has("registry-ba/calculator") && !dependencies.has("calculator"),
+            "Expected the manifest's dependency key to be the explicit form, not the bare name, got: $dependencies",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected the resolved package to land under the shared registry-ba root",
+        )
+    }
+
+    @Test
+    fun `a bare name found in two registries resolves deterministically to one of them, non-interactively`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-bare-two-remotes").toFile()
+        val calculatorRepoBa = gitPackageRepo(remotesRoot, "calculator-repo-ba", "calculator", "1.0.0")
+        val calculatorRepoCw = gitPackageRepo(remotesRoot, "calculator-repo-cw", "calculator", "1.0.0")
+
+        val catalogBaDir = File(remotesRoot, "catalog-ba")
+        catalogBaDir.mkdirs()
+        git(catalogBaDir, "init", "-b", "main")
+        git(catalogBaDir, "config", "user.email", "pope-test@example.com")
+        git(catalogBaDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogBaDir, "calculator", "1.0.0", calculatorRepoBa, "v1.0.0")
+
+        val catalogCwDir = File(remotesRoot, "catalog-cw")
+        catalogCwDir.mkdirs()
+        git(catalogCwDir, "init", "-b", "main")
+        git(catalogCwDir, "config", "user.email", "pope-test@example.com")
+        git(catalogCwDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogCwDir, "calculator", "1.0.0", calculatorRepoCw, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-bare-two-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-bare-two-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "bare-two-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogBaDir.absolutePath.replace("\\", "/")}")
+                    }
+                    create("cw") {
+                        prefix.set("cw.")
+                        catalogUrl.set("${catalogCwDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "bare-two-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .toString(2),
+        )
+
+        // Gradle's askUser(...) can't block in a non-interactive TestKit run, so it falls back to
+        // the first offered option - this only asserts the outcome is deterministic and one of the
+        // two real candidates, the practical limit of what TestKit can exercise for this prompt.
+        val installResult = run(projectDir, "popeInstall", "-PpopeAdd=calculator")
+
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val chosenKey = setOf("registry-ba/calculator", "cw/calculator").singleOrNull { dependencies.has(it) }
+        assertTrue(
+            chosenKey != null,
+            "Expected exactly one of the two candidate registries to be chosen, got: $dependencies",
+        )
+        assertTrue(
+            installResult.output.contains("added \"$chosenKey\""),
+            "Expected the install output to report the same chosen key, got:\n${installResult.output}",
+        )
+    }
+
     // --- shared registry root: multiple packages, one pope_packages/<registryName> folder ---
 
     private fun addCatalogReference(catalogDir: File, localName: String, version: String, repoDir: File, ref: String) {

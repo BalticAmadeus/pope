@@ -19,6 +19,7 @@ import pope.registry.RegistryEntry
 import pope.registry.ResolvedPackage
 import pope.resolver.DependencyResolver
 import pope.suggest.NameNotFoundException
+import pope.suggest.NoRegistryPrefixMatchException
 import pope.trust.TrustPrompt
 import org.gradle.api.GradleException
 import org.gradle.api.Named
@@ -82,9 +83,10 @@ class PopePlugin : Plugin<Project> {
             task.description =
                 "Resolves the project's declared dependencies. " +
                 "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step - " +
-                "a close-but-not-found name (typo) prompts to install the suggested one instead of just failing. " +
-                "Direct-source dependencies (not from a registry) prompt for confirmation; " +
-                "pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
+                "a close-but-not-found name (typo) prompts to install the suggested one instead of just failing, " +
+                "and a bare name matching no configured registry prefix searches every registry, prompting to " +
+                "choose if more than one has it. Direct-source dependencies (not from a registry) prompt for " +
+                "confirmation; pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
             task.doLast {
                 project.logger.lifecycle("=== pope install ===")
                 project.logger.lifecycle("")
@@ -527,9 +529,8 @@ private fun resolveAddSpec(addSpec: String, registry: Registry, userInputHandler
 }
 
 /**
- * findAny(), but a "did you mean X?" suggestion (NameNotFoundException.suggestion) becomes an
- * actual yes/no prompt instead of just failing: "yes" retries with (and installs) the suggested
- * name instead, "no" - or nothing to suggest - fails exactly as before.
+ * findAny(), but a "did you mean X?" suggestion becomes a yes/no prompt instead of just failing,
+ * and a bare name matching no registry prefix falls back to searching every registry.
  */
 private fun findAnyConfirmingTypo(
     packageName: String,
@@ -538,18 +539,46 @@ private fun findAnyConfirmingTypo(
 ): Pair<String, ResolvedPackage> {
     val found =
         try {
-            // findAny() returning null carries no detail (no catalog/registry context to build a
-            // "did you mean X?" message from here) - re-resolve with a versionSpec no real
+            // findAny() returning null carries no detail - re-resolve with a versionSpec no real
             // package satisfies purely to surface the registry's own richer error instead.
             registry.findAny(packageName) ?: registry.resolve(packageName, "^0.0.0")
         } catch (e: NameNotFoundException) {
             val suggestion = e.suggestion ?: throw e
-            // e.message already ends in "- did you mean \"X\"?" - a complete yes/no question on
-            // its own, so it's asked as-is rather than echoing the (full retry) suggestion again
-            // in a separate line, which would re-state the untouched half as if newly confirmed.
             val approved = userInputHandler.askYesNoQuestion(e.message ?: "Install the suggested name instead?") ?: false
             if (!approved) throw e
             return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
+        } catch (e: NoRegistryPrefixMatchException) {
+            return findAcrossRegistries(packageName, registry, userInputHandler) ?: throw e
         }
     return packageName to found
+}
+
+/** Searches every configured registry (Registry.hasAny, no fetch) for a bare name; null if none or not a PrefixRoutingRegistry. */
+private fun findAcrossRegistries(
+    localName: String,
+    registry: Registry,
+    userInputHandler: UserInputHandler,
+): Pair<String, ResolvedPackage>? {
+    if (registry !is PrefixRoutingRegistry) return null
+
+    val matches = registry.findAllMatches(localName)
+    val (entry, resolvedName) =
+        when (matches.size) {
+            0 -> return null
+            1 -> matches.single()
+            else -> {
+                val names = matches.map { it.first.name }
+                val chosen =
+                    userInputHandler.askUser { questions ->
+                        questions.choice(
+                            "\"$localName\" is available from more than one registry - which one do you want to install it from?",
+                            names,
+                        ).ask()
+                    }.getOrElse(names.first())
+                matches.first { (entry, _) -> entry.name == chosen }
+            }
+        }
+
+    val found = entry.registry.findAny(entry.prefix + localName) ?: return null
+    return resolvedName to found
 }

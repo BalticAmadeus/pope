@@ -156,6 +156,39 @@ class CatalogRegistryTest {
     }
 
     @Test
+    fun `hasAny is true for a real entry and false for a missing one`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertTrue(registry.hasAny("example.calculator"))
+        assertFalse(registry.hasAny("example.other"))
+    }
+
+    @Test
+    fun `hasAny never fetches the real package - only findAny-resolve do`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertTrue(registry.hasAny("example.calculator"))
+
+        // The catalog itself gets cloned (cheap - no package content), but the real package's own
+        // repo must never be touched by hasAny - only by findAny/resolve, once something's chosen.
+        assertTrue(File(cacheDir, "_catalog/.git").exists(), "Expected the small catalog repo to be cloned")
+        assertFalse(
+            File(cacheDir, "example.calculator").exists(),
+            "Expected the real package's own cache folder to NOT exist - hasAny must never fetch it",
+        )
+    }
+
+    @Test
     fun `a second resolve reuses the cached catalog and package clones without error`() {
         val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
         val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
