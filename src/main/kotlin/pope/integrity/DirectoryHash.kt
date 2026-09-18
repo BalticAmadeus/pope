@@ -11,18 +11,23 @@ import java.security.MessageDigest
  * renames too.
  */
 object DirectoryHash {
-    fun hash(dir: File): String {
+    /** Every file under dir, relative-pathed and sorted - the same enumeration hash() hashes, reusable for file tracking. */
+    fun relativeFiles(dir: File): List<String> {
         require(dir.isDirectory) { "Not a directory: ${dir.path}" }
 
-        val manifest = StringBuilder()
-        dir
+        return dir
             .walkTopDown()
             .filter { it.isFile }
-            .map { file -> file.relativeTo(dir).invariantSeparatorsPath to file }
-            .sortedBy { (relativePath, _) -> relativePath }
-            .forEach { (relativePath, file) ->
-                manifest.append(sha256Hex(file.readBytes())).append("  ").append(relativePath).append('\n')
-            }
+            .map { file -> file.relativeTo(dir).invariantSeparatorsPath }
+            .sorted()
+            .toList()
+    }
+
+    fun hash(dir: File): String {
+        val manifest = StringBuilder()
+        relativeFiles(dir).forEach { relativePath ->
+            manifest.append(sha256Hex(File(dir, relativePath).readBytes())).append("  ").append(relativePath).append('\n')
+        }
 
         return "sha256:" + sha256Hex(manifest.toString().toByteArray(Charsets.UTF_8))
     }

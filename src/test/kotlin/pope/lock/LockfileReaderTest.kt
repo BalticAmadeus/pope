@@ -29,7 +29,34 @@ class LockfileReaderTest {
 
         val locked = LockfileReader.read(file.toFile())
 
+        // installSubpath/files aren't in this fixture (an older lockfile predating them) - both
+        // default rather than failing to parse.
         assertEquals(LockedPackage("1.0.1", "sha256:abc"), locked["ba.calculator"])
         assertEquals(LockedPackage("1.0.1", "sha256:def"), locked["ba.greeter"])
+    }
+
+    @Test
+    fun `reads installSubpath and files when present`() {
+        val file = createTempDirectory("pope-lockfile-test").toFile().resolve("pope.lock").toPath()
+        file.writeText(
+            """
+            {"resolved": {
+              "ba.calculator": {
+                "version": "1.0.1",
+                "source": "...",
+                "integrity": "sha256:abc",
+                "installSubpath": "registry-ba",
+                "files": ["ba/calculator/Calculator.cls"]
+              }
+            }}
+            """.trimIndent(),
+        )
+
+        val locked = LockfileReader.read(file.toFile())
+
+        assertEquals(
+            LockedPackage("1.0.1", "sha256:abc", installSubpath = "registry-ba", files = listOf("ba/calculator/Calculator.cls")),
+            locked["ba.calculator"],
+        )
     }
 }

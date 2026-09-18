@@ -48,6 +48,18 @@ class BuildPathUpdaterTest {
     }
 
     @Test
+    fun `the same new path repeated in one call is only added once`() {
+        val file = manifestWithBuildPath("src")
+
+        BuildPathUpdater.ensureSourceEntries(
+            file,
+            listOf("pope_packages/registry-ba", "pope_packages/registry-ba"),
+        )
+
+        assertEquals(listOf("src", "pope_packages/registry-ba"), buildPathOf(file))
+    }
+
+    @Test
     fun `adds multiple missing entries while preserving existing ones`() {
         val file = manifestWithBuildPath("src")
 

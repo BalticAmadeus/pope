@@ -21,6 +21,8 @@ registries:
 - **Catalog-based registries** - a registry is a small git repo holding
   only reference files, no package content. Fetches through a
   bare-clone-plus-`git worktree` cache, so repeat fetches are local.
+  Every package from a registry shares one `pope_packages/<registryName>/`
+  folder; direct-source dependencies share `pope_packages/dependencies/`.
 - **Multi-version registries** - a package's catalog folder can hold any
   number of version files; install picks the highest one satisfying the
   caret range.
@@ -38,7 +40,12 @@ registries:
 - **`pope prune [--dry-run]`** - removes `pope_packages/`/`buildPath`
   entries no longer part of the resolved graph.
 - **`pope uninstall <package>`** - removes a dependency and cleans up its
-  `pope_packages/`/`pope.lock`/`buildPath` entries in one step.
+  `pope_packages/`/`pope.lock`/`buildPath` entries in one step. A bare
+  local name works too if it matches exactly one declared dependency, and
+  a typo gets a "did you mean X?" prompt against your declared dependencies.
+- **Bare-name install** - `pope install <name>` with no registry given
+  searches every configured registry; auto-installs on one match, prompts
+  to choose on several. Typos get a "did you mean X?" prompt too.
 - Backward compatible: no `registries {}` configured falls back to a
   plain local-directory registry.
 
@@ -160,7 +167,10 @@ pope {
 ```
 
 A dependency like `"ba.calculator": "^1.0.0"` routes to whichever
-registry's prefix it starts with. See
+registry's prefix it starts with. You can also install by the registry's
+own name plus its local name, e.g. `pope install registry-ba/calculator` -
+or just `pope install calculator` and let pope search every registry for
+it. See
 [registry-ba](https://github.com/erudys27/registry-ba) for a real catalog
 registry, and the packages it references (e.g.
 [calculator](https://github.com/erudys27/calculator)) for what a

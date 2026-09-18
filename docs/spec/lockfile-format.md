@@ -27,13 +27,17 @@ is what makes that single resolved choice explicit and stable.
   "resolved": {
     "acme.common": {
       "version": "1.0.3",
-      "source": "/home/you/.pope/cache/ba/common/v1.0.3/src",
-      "integrity": "sha256:..."
+      "source": "/home/you/.pope/cache/registry-ba/common/v1.0.3",
+      "integrity": "sha256:...",
+      "installSubpath": "registry-ba",
+      "files": ["acme/common/Common.cls"]
     },
     "acme.validation": {
       "version": "1.2.0",
-      "source": "/home/you/.pope/cache/ba/validation/v1.2.0/src",
-      "integrity": "sha256:..."
+      "source": "/home/you/.pope/cache/registry-ba/validation/v1.2.0",
+      "integrity": "sha256:...",
+      "installSubpath": "registry-ba",
+      "files": ["acme/validation/Validation.cls"]
     }
   },
   "trustedDirectSources": {
@@ -41,6 +45,24 @@ is what makes that single resolved choice explicit and stable.
   }
 }
 ```
+
+`installSubpath` and `files` (2026-09-18, shared-registry-root layout)
+record where a package landed under `pope_packages/` and which files it
+owns there. Both packages above share `installSubpath: "registry-ba"` —
+every package resolved from one registry lands in one shared
+`pope_packages/<registryName>/` root (its own already-namespace-mirroring
+source tree, e.g. `acme/common/Common.cls`, nests correctly under it with
+no extra folder pope creates - see `pope.registry.InstallLayout`), so
+`popeInstall`/`popeUninstall`/`popePrune` must track and touch only a
+package's own `files`, never the whole shared folder. Every direct-source
+dependency shares one `pope_packages/dependencies/` root the same way
+(`installSubpath: "dependencies"`), regardless of which registry, if any,
+it was declared alongside. `LocalDirectoryRegistry`-resolved packages
+instead each get their own dedicated, always-safe-to-wipe folder
+(`installSubpath` absent) and an empty `files` list — nothing there needs
+tracking since nothing else ever shares that folder. Both fields default
+(`null`/`[]`) when reading an older lockfile written before this was
+added.
 
 `trustedDirectSources` records, per package_name, the `repoUrl@ref` of each
 direct-source dependency (`DependencySpec.DirectSource` - a raw git URL

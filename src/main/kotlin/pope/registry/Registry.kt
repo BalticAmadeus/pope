@@ -2,22 +2,34 @@ package pope.registry
 
 import java.io.File
 
+/**
+ * SharedRegistryRoot: pope_packages/<installSubpath>/, shared by every package from that root
+ * (a registry's own name, or "dependencies" for direct-source). Safe because a package's own
+ * source tree already mirrors its package_name (ABL/PROPATH requirement), so install/uninstall
+ * must touch only each package's own files, never the whole folder.
+ * Isolated: one dedicated pope_packages/<installSubpath ?: packageName>/src/ per package
+ * (LocalDirectoryRegistry only) - always safe to delete/recreate wholesale.
+ */
+enum class InstallLayout { SharedRegistryRoot, Isolated }
+
 data class ResolvedPackage(
     val packageName: String,
     val version: String,
     val sourceDir: File,
-    // The package's own project root, where openedge-project.json lives -
-    // needed to read its own dependencies for transitive resolution.
     val projectDir: File,
-    // Install-layout hint: where under pope_packages/ this lands (e.g.
-    // "ba/calculator"). null = flat, use packageName directly. Cosmetic
-    // only, never used for resolution/keying/collision-detection.
     val installSubpath: String? = null,
+    val installLayout: InstallLayout = InstallLayout.Isolated,
 )
 
 interface Registry {
     fun resolve(packageName: String, versionSpec: String): ResolvedPackage
 
-    /** Like resolve, but picks any available version - for auto-picking one when the caller didn't specify. */
+    /** Like resolve, but picks any available version. */
     fun findAny(packageName: String): ResolvedPackage?
+
+    /** Cheap existence check - catalog/metadata only, must never fetch the real package content. */
+    fun hasAny(packageName: String): Boolean = findAny(packageName) != null
+
+    /** Cheap "did you mean X?" lookup, same cost/scope constraints as hasAny; null if nothing close. */
+    fun suggestAny(packageName: String): String? = null
 }

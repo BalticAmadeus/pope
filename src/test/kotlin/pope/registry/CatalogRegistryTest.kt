@@ -89,7 +89,8 @@ class CatalogRegistryTest {
         assertEquals("example.calculator", resolved?.packageName)
         assertEquals("1.0.0", resolved?.version)
         assertEquals("src", resolved?.sourceDir?.name)
-        assertEquals(null, resolved?.installSubpath)
+        assertEquals("test", resolved?.installSubpath)
+        assertEquals(InstallLayout.SharedRegistryRoot, resolved?.installLayout)
         assertTrue(File(cacheDir, "example.calculator/_bare.git/HEAD").exists())
         assertTrue(File(cacheDir, "example.calculator/v1.0.0/.git").exists())
         assertFalse(File(cacheDir, "example.greeter").exists())
@@ -152,6 +153,56 @@ class CatalogRegistryTest {
         val registry = registry(catalog, cacheDir)
 
         assertNull(registry.findAny("example.other"))
+    }
+
+    @Test
+    fun `hasAny is true for a real entry and false for a missing one`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertTrue(registry.hasAny("example.calculator"))
+        assertFalse(registry.hasAny("example.other"))
+    }
+
+    @Test
+    fun `hasAny never fetches the real package - only findAny-resolve do`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertTrue(registry.hasAny("example.calculator"))
+
+        // The catalog itself gets cloned (cheap - no package content), but the real package's own
+        // repo must never be touched by hasAny - only by findAny/resolve, once something's chosen.
+        assertTrue(File(cacheDir, "_catalog/.git").exists(), "Expected the small catalog repo to be cloned")
+        assertFalse(
+            File(cacheDir, "example.calculator").exists(),
+            "Expected the real package's own cache folder to NOT exist - hasAny must never fetch it",
+        )
+    }
+
+    @Test
+    fun `suggestAny finds the closest local name for a typo, without fetching, and null when nothing is close`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val calculatorRepo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (calculatorRepo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        assertEquals("example.calculator", registry.suggestAny("example.claculator"))
+        assertNull(registry.suggestAny("example.zzzzzzzzzzzz"))
+        assertFalse(
+            File(cacheDir, "example.calculator").exists(),
+            "Expected suggestAny to never fetch the real package either",
+        )
     }
 
     @Test
@@ -352,7 +403,9 @@ class CatalogRegistryTest {
         val resolved = registry.findAny("ba.calculator")
 
         assertEquals("ba.calculator", resolved?.packageName)
-        assertEquals("ba/calculator", resolved?.installSubpath)
+        // installSubpath is the registry's own name now - shared by every package it resolves,
+        // regardless of prefix - not "ba/calculator" (prefix + local name).
+        assertEquals("test", resolved?.installSubpath)
         assertTrue(File(cacheDir, "calculator/_bare.git/HEAD").exists())
         assertTrue(File(cacheDir, "calculator/v1.0.0/.git").exists())
         assertFalse(File(cacheDir, "ba.calculator").exists())

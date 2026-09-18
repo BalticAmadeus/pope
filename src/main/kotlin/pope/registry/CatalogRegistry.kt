@@ -46,12 +46,7 @@ class CatalogRegistry(
             val suggestion = DidYouMean.suggest(localName, allLocalNames())
             throw NameNotFoundException(
                 "No package named \"$packageName\" found in registry \"$registryName\" catalog ($catalogUrl)" +
-                    // Names only the local name, not "registryName/localName" - the registry itself
-                    // was already valid to get here, so only the part actually in question is shown.
                     (suggestion?.let { " - did you mean \"$it\"?" } ?: ""),
-                // The retry value is still "registryName/localName" (the explicit syntax), not
-                // "prefix + localName" - always retries correctly regardless of whether this
-                // registry's own configured prefix happens to end in a separator or not.
                 suggestion = suggestion?.let { "$registryName/$it" },
             )
         }
@@ -78,6 +73,18 @@ class CatalogRegistry(
         return fetchAndBuild(packageName, localName, best)
     }
 
+    override fun hasAny(packageName: String): Boolean {
+        val localName = localNameOf(packageName)
+        ensureCatalogCloned()
+        return findAllReferences(localName).isNotEmpty()
+    }
+
+    override fun suggestAny(packageName: String): String? {
+        val localName = localNameOf(packageName)
+        ensureCatalogCloned()
+        return DidYouMean.suggest(localName, allLocalNames())
+    }
+
     private fun localNameOf(packageName: String): String {
         require(packageName.startsWith(prefix)) {
             "\"$packageName\" doesn't start with registry \"$registryName\"'s configured prefix \"$prefix\" " +
@@ -89,8 +96,9 @@ class CatalogRegistry(
     private fun fetchAndBuild(packageName: String, localName: String, reference: PackageReference): ResolvedPackage {
         val packageDir = File(cacheDir, localName)
         val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, reference.ref, packageDir)
-        val installSubpath = prefix.trimEnd('.').takeIf { it.isNotEmpty() }?.let { "$it/$localName" }
-        return fetched.copy(installSubpath = installSubpath)
+        // installSubpath is this registry's own name, not its prefix - every package resolved from
+        // here shares one pope_packages/<registryName>/ root (see InstallLayout.SharedRegistryRoot).
+        return fetched.copy(installSubpath = registryName, installLayout = InstallLayout.SharedRegistryRoot)
     }
 
     /** All parsed version references for a package; empty if it isn't in this catalog. */

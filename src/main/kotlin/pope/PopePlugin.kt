@@ -2,6 +2,7 @@ package pope
 
 import pope.integrity.DirectoryHash
 import pope.lock.IntegrityChecker
+import pope.lock.LockedPackage
 import pope.lock.LockfileReader
 import pope.manifest.BuildPathUpdater
 import pope.manifest.DependenciesUpdater
@@ -9,6 +10,7 @@ import pope.manifest.DependencySpec
 import pope.manifest.ManifestReader
 import pope.propath.PropathGenerator
 import pope.registry.CatalogRegistry
+import pope.registry.InstallLayout
 import pope.registry.LocalDirectoryRegistry
 import pope.registry.PrefixRoutingRegistry
 import pope.registry.Registry
@@ -16,7 +18,9 @@ import pope.registry.RegistriesPropertiesFile
 import pope.registry.RegistryEntry
 import pope.registry.ResolvedPackage
 import pope.resolver.DependencyResolver
+import pope.suggest.DidYouMean
 import pope.suggest.NameNotFoundException
+import pope.suggest.NoRegistryPrefixMatchException
 import pope.trust.TrustPrompt
 import org.gradle.api.GradleException
 import org.gradle.api.Named
@@ -28,6 +32,7 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.tasks.userinput.UserInputHandler
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import javax.inject.Inject
@@ -79,9 +84,10 @@ class PopePlugin : Plugin<Project> {
             task.description =
                 "Resolves the project's declared dependencies. " +
                 "Pass -PpopeAdd=<package_name>[:<versionSpec>] to add and resolve a new dependency in one step - " +
-                "a close-but-not-found name (typo) prompts to install the suggested one instead of just failing. " +
-                "Direct-source dependencies (not from a registry) prompt for confirmation; " +
-                "pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
+                "a close-but-not-found name (typo) prompts to install the suggested one instead of just failing, " +
+                "and a bare name matching no configured registry prefix searches every registry, prompting to " +
+                "choose if more than one has it. Direct-source dependencies (not from a registry) prompt for " +
+                "confirmation; pass -PpopeTrustAll to approve them non-interactively (e.g. in CI)."
             task.doLast {
                 project.logger.lifecycle("=== pope install ===")
                 project.logger.lifecycle("")
@@ -142,15 +148,12 @@ class PopePlugin : Plugin<Project> {
                         integrity
                     }
 
+                val popePackagesDir = projectRoot.resolve("pope_packages")
+                val installedFiles = LinkedHashMap<String, List<String>>()
                 val resolved =
                     resolvedPackages.mapValues { (packageName, resolvedPackage) ->
-                        val destination =
-                            projectRoot
-                                .resolve("pope_packages")
-                                .resolve(resolvedPackage.installSubpath ?: packageName)
-                                .resolve("src")
-                        destination.deleteRecursively()
-                        resolvedPackage.sourceDir.copyRecursively(destination, overwrite = true)
+                        installedFiles[packageName] =
+                            installPackage(popePackagesDir, packageName, resolvedPackage, existingLock[packageName]?.files.orEmpty())
                         resolvedPackage
                     }
 
@@ -167,7 +170,9 @@ class PopePlugin : Plugin<Project> {
                         JSONObject()
                             .put("version", resolvedPackage.version)
                             .put("source", resolvedPackage.sourceDir.absolutePath)
-                            .put("integrity", integrities.getValue(packageName)),
+                            .put("integrity", integrities.getValue(packageName))
+                            .putOpt("installSubpath", resolvedPackage.installSubpath)
+                            .put("files", JSONArray(installedFiles.getValue(packageName))),
                     )
                 }
                 val trustedDirectSourcesJson = JSONObject()
@@ -178,10 +183,7 @@ class PopePlugin : Plugin<Project> {
                         .put("trustedDirectSources", trustedDirectSourcesJson)
                 projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
 
-                val dependencySourcePaths =
-                    resolved.map { (packageName, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: packageName}/src"
-                    }
+                val dependencySourcePaths = resolved.map { (packageName, resolvedPackage) -> buildPathEntryFor(packageName, resolvedPackage) }
                 BuildPathUpdater.ensureSourceEntries(manifestFile, dependencySourcePaths)
 
                 // Only new/version-changed packages get listed individually - pope_packages/ already
@@ -236,27 +238,29 @@ class PopePlugin : Plugin<Project> {
                 val registry = buildRegistry(extension)
                 val manifest = ManifestReader.read(manifestFile)
 
+                // Old lock entries for packages no longer in the resolved graph - the only way to
+                // find a removed package's own install location (registry root + its tracked files,
+                // or its isolated folder) without re-resolving something that's gone.
+                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
+
                 // Same resolution popeInstall does, to know what "stale" actually means right now.
                 val directSourceCacheDir = extension.cacheDir.get().asFile.resolve("_direct")
                 val resolvedPackages = DependencyResolver.resolveAll(manifest.dependencies, registry, directSourceCacheDir)
-                val expectedPaths =
-                    resolvedPackages.map { (packageName, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: packageName}/src"
-                    }.toSet()
+                val expectedPaths = resolvedPackages.map { (name, resolvedPackage) -> buildPathEntryFor(name, resolvedPackage) }.toSet()
 
                 val dryRun = project.hasProperty("popeDryRun")
 
-                val staleDirs = findStalePopePackagesDirs(projectRoot, expectedPaths)
+                val stalePackageKeys = existingLock.keys - resolvedPackages.keys
                 if (!dryRun) {
                     val popePackagesDir = projectRoot.resolve("pope_packages")
-                    staleDirs.forEach { (leafDir, _) ->
-                        leafDir.deleteRecursively()
-                        removeNowEmptyAncestors(leafDir.parentFile, popePackagesDir)
+                    stalePackageKeys.forEach { packageKey ->
+                        val affectedDirs = deleteInstalledPackage(popePackagesDir, packageKey, existingLock.getValue(packageKey))
+                        affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
                     }
                 }
                 val staleBuildPathPaths = BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths, dryRun)
 
-                val allStalePaths = (staleDirs.map { it.second } + staleBuildPathPaths).toSortedSet()
+                val allStalePaths = (stalePackageKeys + staleBuildPathPaths).toSortedSet()
                 if (allStalePaths.isEmpty()) {
                     project.logger.lifecycle("  nothing to remove")
                 } else {
@@ -274,12 +278,14 @@ class PopePlugin : Plugin<Project> {
             task.group = "pope"
             task.description =
                 "Removes a dependency and cleans up its pope_packages/pope.lock/buildPath entries. " +
-                "Usage: -PpopeUninstall=<package_name>"
+                "Usage: -PpopeUninstall=<package_name> - a bare local name matching more than one " +
+                "declared \"registryName/localName\" dependency prompts to choose which one, and a " +
+                "close-but-not-declared name (typo) prompts to uninstall the suggested one instead."
             task.doLast {
                 project.logger.lifecycle("=== pope uninstall ===")
                 project.logger.lifecycle("")
 
-                val packageName =
+                val uninstallSpec =
                     project.findProperty("popeUninstall") as String?
                         ?: throw GradleException("Missing -PpopeUninstall=<package_name>.")
 
@@ -287,10 +293,14 @@ class PopePlugin : Plugin<Project> {
                 val manifestFile = projectRoot.resolve("openedge-project.json")
                 val registry = buildRegistry(extension)
                 val manifest = ManifestReader.read(manifestFile)
+                val userInputHandler = (project as ProjectInternal).services.get(UserInputHandler::class.java)
 
-                require(packageName in manifest.dependencies) {
-                    "\"$packageName\" is not declared in dependencies - nothing to uninstall."
-                }
+                val packageName = resolveUninstallSpec(uninstallSpec, manifest.dependencies.keys, userInputHandler)
+
+                // Old lock entry for the package being removed - the only way to find its own
+                // install location (registry root + its tracked files, or its isolated folder)
+                // without re-resolving something that's about to be gone.
+                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
 
                 // Re-resolves what's left, same as popePrune, to know exactly
                 // what should still exist (including anything that was only
@@ -298,38 +308,49 @@ class PopePlugin : Plugin<Project> {
                 val remainingDependencies = manifest.dependencies - packageName
                 val directSourceCacheDir = extension.cacheDir.get().asFile.resolve("_direct")
                 val resolvedPackages = DependencyResolver.resolveAll(remainingDependencies, registry, directSourceCacheDir)
-                val expectedPaths =
-                    resolvedPackages.map { (name, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: name}/src"
-                    }.toSet()
+                val expectedPaths = resolvedPackages.map { (name, resolvedPackage) -> buildPathEntryFor(name, resolvedPackage) }.toSet()
 
+                // Every previously-locked key no longer in the remaining resolve, not just
+                // packageName itself - a transitive dependency that only packageName pulled in
+                // becomes stale here too, exactly like popePrune.
                 val popePackagesDir = projectRoot.resolve("pope_packages")
-                val staleDirs = findStalePopePackagesDirs(projectRoot, expectedPaths)
-                staleDirs.forEach { (leafDir, _) ->
-                    leafDir.deleteRecursively()
-                    removeNowEmptyAncestors(leafDir.parentFile, popePackagesDir)
+                val staleKeys = existingLock.keys - resolvedPackages.keys
+                staleKeys.forEach { staleKey ->
+                    val affectedDirs = deleteInstalledPackage(popePackagesDir, staleKey, existingLock.getValue(staleKey))
+                    affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
                 }
                 BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths)
                 DependenciesUpdater.removeDependency(manifestFile, packageName)
 
-                // Reuses each remaining package's already-known integrity
-                // rather than re-hashing - only falls back to a fresh hash
-                // if pope.lock didn't already have an entry for it.
-                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
+                // Reuses each remaining package's already-known integrity/installSubpath/files
+                // rather than re-deriving them - none of that changed for packages that aren't
+                // being reinstalled here - only falls back to fresh values if pope.lock didn't
+                // already have an entry for it.
                 val resolvedJson = JSONObject()
                 resolvedPackages.forEach { (name, resolvedPackage) ->
-                    val integrity = existingLock[name]?.integrity ?: DirectoryHash.hash(resolvedPackage.sourceDir)
+                    val locked = existingLock[name]
+                    val integrity = locked?.integrity ?: DirectoryHash.hash(resolvedPackage.sourceDir)
                     resolvedJson.put(
                         name,
                         JSONObject()
                             .put("version", resolvedPackage.version)
                             .put("source", resolvedPackage.sourceDir.absolutePath)
-                            .put("integrity", integrity),
+                            .put("integrity", integrity)
+                            .putOpt("installSubpath", locked?.installSubpath ?: resolvedPackage.installSubpath)
+                            .put("files", JSONArray(locked?.files.orEmpty())),
                     )
                 }
-                projectRoot.resolve("pope.lock").writeText(JSONObject().put("resolved", resolvedJson).toString(2))
+                // Carries forward trust approvals for whichever direct-source dependencies are
+                // still part of the graph - dropped entirely before, which meant any uninstall
+                // silently wiped every trust approval, not just the removed package's own.
+                val existingTrust = LockfileReader.readTrustedDirectSources(projectRoot.resolve("pope.lock"))
+                val trustedDirectSourcesJson = JSONObject()
+                existingTrust.filterKeys { it in resolvedPackages }.forEach { (key, sourceKey) -> trustedDirectSourcesJson.put(key, sourceKey) }
 
-                project.logger.lifecycle("  removed \"$packageName\" (${staleDirs.size} package folder(s) cleaned up)")
+                val lockJson = JSONObject().put("resolved", resolvedJson).put("trustedDirectSources", trustedDirectSourcesJson)
+                projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
+
+                project.logger.lifecycle("  removed \"$packageName\"")
             }
         }
 
@@ -423,18 +444,69 @@ private fun buildRegistry(extension: PopeExtension): Registry {
     return PrefixRoutingRegistry(entries)
 }
 
-/** Every "src" dir under pope_packages/ not in expectedPaths, paired with its parent (the whole package folder to delete). */
-private fun findStalePopePackagesDirs(projectRoot: File, expectedPaths: Set<String>): List<Pair<File, String>> {
-    val popePackagesDir = projectRoot.resolve("pope_packages")
-    if (!popePackagesDir.isDirectory) return emptyList()
+/** The buildPath source entry for a resolved package - one per registry (shared), or one per package (isolated). */
+private fun buildPathEntryFor(packageKey: String, resolvedPackage: ResolvedPackage): String =
+    when (resolvedPackage.installLayout) {
+        InstallLayout.SharedRegistryRoot -> "pope_packages/${resolvedPackage.installSubpath}"
+        InstallLayout.Isolated -> "pope_packages/${resolvedPackage.installSubpath ?: packageKey}/src"
+    }
 
-    return popePackagesDir
-        .walkTopDown()
-        .filter { it.isDirectory && it.name == "src" }
-        .mapNotNull { srcDir ->
-            val relativePath = srcDir.relativeTo(projectRoot).invariantSeparatorsPath
-            if (relativePath in expectedPaths) null else srcDir.parentFile to relativePath
-        }.toList()
+/**
+ * Installs one resolved package under popePackagesDir, returning its relative file list
+ * (SharedRegistryRoot - multiple packages share one registry-named root, so only this package's own
+ * files are ever touched: copied in fresh, and anything in previousFiles but not the new set - a
+ * version bump that dropped/renamed a file - is deleted) or an empty list (Isolated - one dedicated
+ * folder per package, always safe to wipe and recopy wholesale, same as before).
+ */
+private fun installPackage(
+    popePackagesDir: File,
+    packageKey: String,
+    resolvedPackage: ResolvedPackage,
+    previousFiles: List<String>,
+): List<String> =
+    when (resolvedPackage.installLayout) {
+        InstallLayout.SharedRegistryRoot -> {
+            val destinationRoot = File(popePackagesDir, requireNotNull(resolvedPackage.installSubpath))
+            val newFiles = DirectoryHash.relativeFiles(resolvedPackage.sourceDir)
+            newFiles.forEach { relativePath ->
+                val destinationFile = File(destinationRoot, relativePath)
+                destinationFile.parentFile.mkdirs()
+                File(resolvedPackage.sourceDir, relativePath).copyTo(destinationFile, overwrite = true)
+            }
+
+            val staleFiles = previousFiles.toSet() - newFiles.toSet()
+            val affectedParents = staleFiles.map { relativePath -> File(destinationRoot, relativePath) }.onEach { it.delete() }
+            affectedParents.map { it.parentFile }.distinct().forEach { removeNowEmptyAncestors(it, popePackagesDir) }
+
+            newFiles
+        }
+        InstallLayout.Isolated -> {
+            val destination = File(popePackagesDir, resolvedPackage.installSubpath ?: packageKey).resolve("src")
+            destination.deleteRecursively()
+            resolvedPackage.sourceDir.copyRecursively(destination, overwrite = true)
+            emptyList()
+        }
+    }
+
+/**
+ * Removes a previously-locked, now-stale package's install output, using its OLD pope.lock entry
+ * (not a fresh resolve - the package is gone from the dependency graph, so there's nothing to
+ * re-resolve). SharedRegistryRoot: deletes exactly its own tracked files, leaving every sibling
+ * package in that same registry folder untouched. Isolated: deletes its whole dedicated folder, as
+ * before. Returns the set of directories to run removeNowEmptyAncestors from.
+ */
+private fun deleteInstalledPackage(popePackagesDir: File, packageKey: String, locked: LockedPackage): Set<File> {
+    val root = File(popePackagesDir, locked.installSubpath ?: packageKey)
+    if (locked.files.isEmpty()) {
+        root.deleteRecursively()
+        return setOf(root.parentFile)
+    }
+
+    return locked.files
+        .map { relativePath -> File(root, relativePath) }
+        .onEach { it.delete() }
+        .map { it.parentFile }
+        .toSet()
 }
 
 /** Deletes now-empty ancestor dirs (e.g. an emptied-out registry-prefix folder), stopping at stopAt or the first non-empty one. */
@@ -445,6 +517,41 @@ private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
         current.delete()
         current = parent
     }
+}
+
+/**
+ * Resolves -PpopeUninstall=<spec> against the manifest's own declared dependency keys - no registry
+ * search, since uninstall only ever targets something already declared. An exact key match wins
+ * outright; otherwise spec is treated as a bare local name and matched against the local-name half
+ * of any declared "registryName/localName" key (zero matches falls through to a typo suggestion
+ * below; one auto-picks; more than one prompts the user to choose). If nothing matches even as a
+ * bare local name, DidYouMean looks for a close typo among every declared key (and their local-name
+ * halves) and prompts to uninstall that instead - same "did you mean X?" shape as install.
+ */
+private fun resolveUninstallSpec(spec: String, declaredKeys: Set<String>, userInputHandler: UserInputHandler): String {
+    if (spec in declaredKeys) return spec
+
+    val matches = declaredKeys.filter { it.substringAfterLast('/', missingDelimiterValue = "") == spec }
+    when (matches.size) {
+        0 -> {}
+        1 -> return matches.single()
+        else ->
+            return userInputHandler.askUser { questions ->
+                questions.choice(
+                    "\"$spec\" matches more than one declared dependency - which one do you want to uninstall?",
+                    matches,
+                ).ask()
+            }.getOrElse(matches.first())
+    }
+
+    val candidateKeysByText = declaredKeys.associateWith { it } + declaredKeys.filter { '/' in it }.associateBy { it.substringAfterLast('/') }
+    val suggestion =
+        DidYouMean.suggest(spec, candidateKeysByText.keys)?.let { candidateKeysByText.getValue(it) }
+            ?: throw GradleException("\"$spec\" is not declared in dependencies - nothing to uninstall.")
+    val question = "\"$spec\" is not declared in dependencies - did you mean \"$suggestion\"?"
+    val approved = userInputHandler.askYesNoQuestion(question) ?: false
+    if (!approved) throw GradleException(question)
+    return suggestion
 }
 
 /** Parses -PpopeAdd=<name>[:<versionSpec>]; no versionSpec means "whatever's available", pinned as ^version. */
@@ -459,9 +566,9 @@ private fun resolveAddSpec(addSpec: String, registry: Registry, userInputHandler
 }
 
 /**
- * findAny(), but a "did you mean X?" suggestion (NameNotFoundException.suggestion) becomes an
- * actual yes/no prompt instead of just failing: "yes" retries with (and installs) the suggested
- * name instead, "no" - or nothing to suggest - fails exactly as before.
+ * findAny(), but a "did you mean X?" suggestion becomes a yes/no prompt instead of just failing,
+ * and a bare name matching no registry prefix falls back to searching every registry - by exact
+ * name first, then (if nothing has it exactly) by "did you mean X?" across every registry too.
  */
 private fun findAnyConfirmingTypo(
     packageName: String,
@@ -470,18 +577,53 @@ private fun findAnyConfirmingTypo(
 ): Pair<String, ResolvedPackage> {
     val found =
         try {
-            // findAny() returning null carries no detail (no catalog/registry context to build a
-            // "did you mean X?" message from here) - re-resolve with a versionSpec no real
+            // findAny() returning null carries no detail - re-resolve with a versionSpec no real
             // package satisfies purely to surface the registry's own richer error instead.
             registry.findAny(packageName) ?: registry.resolve(packageName, "^0.0.0")
         } catch (e: NameNotFoundException) {
             val suggestion = e.suggestion ?: throw e
-            // e.message already ends in "- did you mean \"X\"?" - a complete yes/no question on
-            // its own, so it's asked as-is rather than echoing the (full retry) suggestion again
-            // in a separate line, which would re-state the untouched half as if newly confirmed.
             val approved = userInputHandler.askYesNoQuestion(e.message ?: "Install the suggested name instead?") ?: false
             if (!approved) throw e
             return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
+        } catch (e: NoRegistryPrefixMatchException) {
+            findAcrossRegistries(packageName, registry, userInputHandler)?.let { return it }
+            val suggestion = (registry as? PrefixRoutingRegistry)?.suggestAcrossRegistries(packageName) ?: throw e
+            // The suggestion is folded into the re-thrown message too (not just the prompt) so a
+            // declined/non-interactive run's failure output still shows it, same as NameNotFoundException.
+            val question = "${e.message} - did you mean \"$suggestion\"?"
+            val approved = userInputHandler.askYesNoQuestion(question) ?: false
+            if (!approved) throw NoRegistryPrefixMatchException(question)
+            return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
         }
     return packageName to found
+}
+
+/** Searches every configured registry (Registry.hasAny, no fetch) for a bare name; null if none or not a PrefixRoutingRegistry. */
+private fun findAcrossRegistries(
+    localName: String,
+    registry: Registry,
+    userInputHandler: UserInputHandler,
+): Pair<String, ResolvedPackage>? {
+    if (registry !is PrefixRoutingRegistry) return null
+
+    val matches = registry.findAllMatches(localName)
+    val (entry, resolvedName) =
+        when (matches.size) {
+            0 -> return null
+            1 -> matches.single()
+            else -> {
+                val names = matches.map { it.first.name }
+                val chosen =
+                    userInputHandler.askUser { questions ->
+                        questions.choice(
+                            "\"$localName\" is available from more than one registry - which one do you want to install it from?",
+                            names,
+                        ).ask()
+                    }.getOrElse(names.first())
+                matches.first { (entry, _) -> entry.name == chosen }
+            }
+        }
+
+    val found = entry.registry.findAny(entry.prefix + localName) ?: return null
+    return resolvedName to found
 }
