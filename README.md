@@ -40,7 +40,8 @@ registries:
 - **`pope prune [--dry-run]`** - removes `pope_packages/`/`buildPath`
   entries no longer part of the resolved graph.
 - **`pope uninstall <package>`** - removes a dependency and cleans up its
-  `pope_packages/`/`pope.lock`/`buildPath` entries in one step.
+  `pope_packages/`/`pope.lock`/`buildPath` entries in one step. A bare
+  local name works too if it matches exactly one declared dependency.
 - **Bare-name install** - `pope install <name>` with no registry given
   searches every configured registry; auto-installs on one match, prompts
   to choose on several. Typos get a "did you mean X?" prompt too.

@@ -78,12 +78,14 @@ The entry point. Everything starts here.
     does, then deletes any `pope_packages/` entry and `buildPath` entry
     that is no longer part of that graph. `-PpopeDryRun` reports without
     deleting.
-  - **`popeUninstall`** — `-PpopeUninstall=<package_name>` removes one
-    dependency, re-resolves what's left (so anything it alone pulled in
-    transitively is cleaned up too, same as `popePrune`), and updates
-    `pope_packages/`/`pope.lock`/`buildPath` accordingly. Carries forward
-    `trustedDirectSources` entries for packages still in the graph, rather
-    than dropping them all.
+  - **`popeUninstall`** — `-PpopeUninstall=<spec>` resolves `spec` against
+    the manifest's own declared dependency keys via `resolveUninstallSpec`
+    (exact key, or a bare local name matching one `registryName/localName`
+    key — see below), removes it, re-resolves what's left (so anything it
+    alone pulled in transitively is cleaned up too, same as `popePrune`),
+    and updates `pope_packages/`/`pope.lock`/`buildPath` accordingly.
+    Carries forward `trustedDirectSources` entries for packages still in
+    the graph, rather than dropping them all.
   - **`popeRegistryAdd`** — appends one entry to
     `pope-registries.properties` via `RegistriesPropertiesFile.add`.
 - **Private helper functions at the bottom of the file:**
@@ -109,6 +111,13 @@ The entry point. Everything starts here.
   - `resolveAddSpec(addSpec, registry, userInputHandler)` — parses
     `-PpopeAdd=name[:range]`. With no `:range`, delegates to
     `findAnyConfirmingTypo` to discover a version and pins it as `^version`.
+  - `resolveUninstallSpec(spec, declaredKeys, userInputHandler)` — resolves
+    `-PpopeUninstall=<spec>` against the manifest's own declared dependency
+    keys (no registry search — uninstall only ever targets something
+    already declared): an exact key wins outright, otherwise `spec` is
+    matched as a bare local name against the local-name half of any
+    declared `"registryName/localName"` key, auto-picking on one match and
+    prompting on several.
   - `findAnyConfirmingTypo(...)` — like `registry.findAny`, but a
     `NameNotFoundException` with a suggestion becomes an actual yes/no
     prompt ("did you mean X?") instead of just failing, and a bare name
@@ -480,8 +489,9 @@ using Gradle's `TestKit`, not isolated function calls.
   `registries{}` + properties-file config, the shared `pope_packages/<registryName>/`
   root vs. direct-source `dependencies/` root, typo "did you mean X?"
   prompts, bare-name install (search every registry, auto-install on one
-  match, disambiguate on several), and the `.pope/` layout where
-  `projectRoot` points one level up.
+  match, disambiguate on several), bare-name uninstall (matched against
+  already-declared dependencies, same disambiguation), and the `.pope/`
+  layout where `projectRoot` points one level up.
 - **`PublishedPluginFunctionalTest.kt`** — proves the plugin can be applied
   the way a real separate consumer would: by plugin id + version resolved
   from a Maven repository, not the TestKit classpath shortcut.

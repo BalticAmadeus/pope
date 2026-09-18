@@ -277,12 +277,13 @@ class PopePlugin : Plugin<Project> {
             task.group = "pope"
             task.description =
                 "Removes a dependency and cleans up its pope_packages/pope.lock/buildPath entries. " +
-                "Usage: -PpopeUninstall=<package_name>"
+                "Usage: -PpopeUninstall=<package_name> - a bare local name matching more than one " +
+                "declared \"registryName/localName\" dependency prompts to choose which one."
             task.doLast {
                 project.logger.lifecycle("=== pope uninstall ===")
                 project.logger.lifecycle("")
 
-                val packageName =
+                val uninstallSpec =
                     project.findProperty("popeUninstall") as String?
                         ?: throw GradleException("Missing -PpopeUninstall=<package_name>.")
 
@@ -290,10 +291,9 @@ class PopePlugin : Plugin<Project> {
                 val manifestFile = projectRoot.resolve("openedge-project.json")
                 val registry = buildRegistry(extension)
                 val manifest = ManifestReader.read(manifestFile)
+                val userInputHandler = (project as ProjectInternal).services.get(UserInputHandler::class.java)
 
-                require(packageName in manifest.dependencies) {
-                    "\"$packageName\" is not declared in dependencies - nothing to uninstall."
-                }
+                val packageName = resolveUninstallSpec(uninstallSpec, manifest.dependencies.keys, userInputHandler)
 
                 // Old lock entry for the package being removed - the only way to find its own
                 // install location (registry root + its tracked files, or its isolated folder)
@@ -514,6 +514,30 @@ private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
         val parent = current.parentFile
         current.delete()
         current = parent
+    }
+}
+
+/**
+ * Resolves -PpopeUninstall=<spec> against the manifest's own declared dependency keys - no registry
+ * search, since uninstall only ever targets something already declared. An exact key match wins
+ * outright; otherwise spec is treated as a bare local name and matched against the local-name half
+ * of any declared "registryName/localName" key. Zero matches is a loud error; one auto-picks; more
+ * than one prompts the user to choose.
+ */
+private fun resolveUninstallSpec(spec: String, declaredKeys: Set<String>, userInputHandler: UserInputHandler): String {
+    if (spec in declaredKeys) return spec
+
+    val matches = declaredKeys.filter { it.substringAfterLast('/', missingDelimiterValue = "") == spec }
+    return when (matches.size) {
+        0 -> throw GradleException("\"$spec\" is not declared in dependencies - nothing to uninstall.")
+        1 -> matches.single()
+        else ->
+            userInputHandler.askUser { questions ->
+                questions.choice(
+                    "\"$spec\" matches more than one declared dependency - which one do you want to uninstall?",
+                    matches,
+                ).ask()
+            }.getOrElse(matches.first())
     }
 }
 

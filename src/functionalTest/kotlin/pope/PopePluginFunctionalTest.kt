@@ -1542,6 +1542,145 @@ class PopePluginFunctionalTest {
     }
 
     @Test
+    fun `popeUninstall accepts a bare local name when it matches exactly one declared registryName-localName dependency`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-uninstall-bare-one-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-uninstall-bare-one-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-uninstall-bare-one-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "uninstall-bare-one-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "uninstall-bare-one-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall")
+        val uninstallResult = run(projectDir, "popeUninstall", "-PpopeUninstall=calculator")
+
+        assertTrue(
+            uninstallResult.output.contains("removed \"registry-ba/calculator\""),
+            "Expected the bare name to resolve to the one matching declared key, got:\n${uninstallResult.output}",
+        )
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        assertTrue(
+            !dependencies.has("registry-ba/calculator") && dependencies.has("registry-ba/logger"),
+            "Expected only calculator removed, logger left alone, got: $dependencies",
+        )
+    }
+
+    @Test
+    fun `popeUninstall with a bare local name matching two declared dependencies resolves deterministically, non-interactively`() {
+        // Distinct package_names (real ABL namespaces) even though both are catalogued under the
+        // same local name "calculator" - two packages sharing one real namespace would otherwise
+        // fail with a PROPATH namespace collision, unrelated to what this test is checking.
+        val remotesRoot = createTempDirectory("pope-functional-test-uninstall-bare-two-remotes").toFile()
+        val calculatorRepoBa = gitPackageRepo(remotesRoot, "calculator-repo-ba", "ba_calculator", "1.0.0")
+        val calculatorRepoCw = gitPackageRepo(remotesRoot, "calculator-repo-cw", "cw_calculator", "1.0.0")
+
+        val catalogBaDir = File(remotesRoot, "catalog-ba")
+        catalogBaDir.mkdirs()
+        git(catalogBaDir, "init", "-b", "main")
+        git(catalogBaDir, "config", "user.email", "pope-test@example.com")
+        git(catalogBaDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogBaDir, "calculator", "1.0.0", calculatorRepoBa, "v1.0.0")
+
+        val catalogCwDir = File(remotesRoot, "catalog-cw")
+        catalogCwDir.mkdirs()
+        git(catalogCwDir, "init", "-b", "main")
+        git(catalogCwDir, "config", "user.email", "pope-test@example.com")
+        git(catalogCwDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogCwDir, "calculator", "1.0.0", calculatorRepoCw, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-uninstall-bare-two-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-uninstall-bare-two-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "uninstall-bare-two-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogBaDir.absolutePath.replace("\\", "/")}")
+                    }
+                    create("cw") {
+                        prefix.set("cw.")
+                        catalogUrl.set("${catalogCwDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "uninstall-bare-two-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("cw/calculator", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall")
+
+        // Gradle's askUser(...) can't block in a non-interactive TestKit run, so it falls back to
+        // the first offered option - same practical limit as the install-side disambiguation test.
+        val uninstallResult = run(projectDir, "popeUninstall", "-PpopeUninstall=calculator")
+
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val removedKey = setOf("registry-ba/calculator", "cw/calculator").singleOrNull { !dependencies.has(it) }
+        assertTrue(
+            removedKey != null,
+            "Expected exactly one of the two candidates to be removed, got: $dependencies",
+        )
+        assertTrue(
+            uninstallResult.output.contains("removed \"$removedKey\""),
+            "Expected the uninstall output to report the same removed key, got:\n${uninstallResult.output}",
+        )
+    }
+
+    @Test
     fun `popeUninstall carries forward trustedDirectSources for dependencies that are still part of the graph`() {
         val remotesRoot = createTempDirectory("pope-functional-test-uninstall-trust-remotes").toFile()
         val greeterRepo = gitPackageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.0")
