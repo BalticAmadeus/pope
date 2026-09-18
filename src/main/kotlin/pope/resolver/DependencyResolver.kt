@@ -3,11 +3,20 @@ package pope.resolver
 import pope.fetch.GitPackageFetcher
 import pope.manifest.DependencySpec
 import pope.manifest.ManifestReader
+import pope.registry.InstallLayout
 import pope.registry.Registry
 import pope.registry.ResolvedPackage
 import pope.version.CaretRange
 import pope.version.SemVer
 import java.io.File
+
+/**
+ * Every direct-source dependency shares this one pope_packages/ root, same as packages sharing a
+ * registry's own root (InstallLayout.SharedRegistryRoot) - each one's own source tree already
+ * mirrors its real package_name as nested folders (the same ABL/PROPATH requirement that makes a
+ * registry's shared root work), so no per-dependency subfolder is needed here either.
+ */
+private const val DIRECT_SOURCE_INSTALL_SUBPATH = "dependencies"
 
 /**
  * Resolves a manifest's dependencies transitively, reading each resolved
@@ -90,7 +99,7 @@ object DependencyResolver {
                     onDirectSource(packageKey, spec, path)
                     GitPackageFetcher
                         .fetch(packageKey, spec.repoUrl, spec.ref, File(directSourceCacheDir, packageKey))
-                        .copy(installSubpath = "_direct/$packageKey")
+                        .copy(installSubpath = DIRECT_SOURCE_INSTALL_SUBPATH, installLayout = InstallLayout.SharedRegistryRoot)
                 }
             }
         resolved[packageKey] = resolvedPackage

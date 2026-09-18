@@ -183,7 +183,10 @@ class DependencyResolverTest {
 
         assertEquals(setOf("greeter"), resolved.keys)
         assertEquals("1.0.1", resolved.getValue("greeter").version)
-        assertEquals("_direct/greeter", resolved.getValue("greeter").installSubpath)
+        // Every direct-source dependency shares one pope_packages/dependencies root, same as
+        // packages sharing a registry's own root - not a per-dependency isolated folder.
+        assertEquals("dependencies", resolved.getValue("greeter").installSubpath)
+        assertEquals(pope.registry.InstallLayout.SharedRegistryRoot, resolved.getValue("greeter").installLayout)
     }
 
     @Test

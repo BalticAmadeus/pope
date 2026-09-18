@@ -89,8 +89,9 @@ class CatalogRegistry(
     private fun fetchAndBuild(packageName: String, localName: String, reference: PackageReference): ResolvedPackage {
         val packageDir = File(cacheDir, localName)
         val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, reference.ref, packageDir)
-        val installSubpath = prefix.trimEnd('.').takeIf { it.isNotEmpty() }?.let { "$it/$localName" }
-        return fetched.copy(installSubpath = installSubpath)
+        // installSubpath is this registry's own name, not its prefix - every package resolved from
+        // here shares one pope_packages/<registryName>/ root (see InstallLayout.SharedRegistryRoot).
+        return fetched.copy(installSubpath = registryName, installLayout = InstallLayout.SharedRegistryRoot)
     }
 
     /** All parsed version references for a package; empty if it isn't in this catalog. */

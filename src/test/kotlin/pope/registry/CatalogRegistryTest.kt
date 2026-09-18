@@ -89,7 +89,8 @@ class CatalogRegistryTest {
         assertEquals("example.calculator", resolved?.packageName)
         assertEquals("1.0.0", resolved?.version)
         assertEquals("src", resolved?.sourceDir?.name)
-        assertEquals(null, resolved?.installSubpath)
+        assertEquals("test", resolved?.installSubpath)
+        assertEquals(InstallLayout.SharedRegistryRoot, resolved?.installLayout)
         assertTrue(File(cacheDir, "example.calculator/_bare.git/HEAD").exists())
         assertTrue(File(cacheDir, "example.calculator/v1.0.0/.git").exists())
         assertFalse(File(cacheDir, "example.greeter").exists())
@@ -352,7 +353,9 @@ class CatalogRegistryTest {
         val resolved = registry.findAny("ba.calculator")
 
         assertEquals("ba.calculator", resolved?.packageName)
-        assertEquals("ba/calculator", resolved?.installSubpath)
+        // installSubpath is the registry's own name now - shared by every package it resolves,
+        // regardless of prefix - not "ba/calculator" (prefix + local name).
+        assertEquals("test", resolved?.installSubpath)
         assertTrue(File(cacheDir, "calculator/_bare.git/HEAD").exists())
         assertTrue(File(cacheDir, "calculator/v1.0.0/.git").exists())
         assertFalse(File(cacheDir, "ba.calculator").exists())

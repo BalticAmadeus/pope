@@ -2,6 +2,7 @@ package pope
 
 import pope.integrity.DirectoryHash
 import pope.lock.IntegrityChecker
+import pope.lock.LockedPackage
 import pope.lock.LockfileReader
 import pope.manifest.BuildPathUpdater
 import pope.manifest.DependenciesUpdater
@@ -9,6 +10,7 @@ import pope.manifest.DependencySpec
 import pope.manifest.ManifestReader
 import pope.propath.PropathGenerator
 import pope.registry.CatalogRegistry
+import pope.registry.InstallLayout
 import pope.registry.LocalDirectoryRegistry
 import pope.registry.PrefixRoutingRegistry
 import pope.registry.Registry
@@ -28,6 +30,7 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.tasks.userinput.UserInputHandler
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import javax.inject.Inject
@@ -142,15 +145,12 @@ class PopePlugin : Plugin<Project> {
                         integrity
                     }
 
+                val popePackagesDir = projectRoot.resolve("pope_packages")
+                val installedFiles = LinkedHashMap<String, List<String>>()
                 val resolved =
                     resolvedPackages.mapValues { (packageName, resolvedPackage) ->
-                        val destination =
-                            projectRoot
-                                .resolve("pope_packages")
-                                .resolve(resolvedPackage.installSubpath ?: packageName)
-                                .resolve("src")
-                        destination.deleteRecursively()
-                        resolvedPackage.sourceDir.copyRecursively(destination, overwrite = true)
+                        installedFiles[packageName] =
+                            installPackage(popePackagesDir, packageName, resolvedPackage, existingLock[packageName]?.files.orEmpty())
                         resolvedPackage
                     }
 
@@ -167,7 +167,9 @@ class PopePlugin : Plugin<Project> {
                         JSONObject()
                             .put("version", resolvedPackage.version)
                             .put("source", resolvedPackage.sourceDir.absolutePath)
-                            .put("integrity", integrities.getValue(packageName)),
+                            .put("integrity", integrities.getValue(packageName))
+                            .putOpt("installSubpath", resolvedPackage.installSubpath)
+                            .put("files", JSONArray(installedFiles.getValue(packageName))),
                     )
                 }
                 val trustedDirectSourcesJson = JSONObject()
@@ -178,10 +180,7 @@ class PopePlugin : Plugin<Project> {
                         .put("trustedDirectSources", trustedDirectSourcesJson)
                 projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
 
-                val dependencySourcePaths =
-                    resolved.map { (packageName, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: packageName}/src"
-                    }
+                val dependencySourcePaths = resolved.map { (packageName, resolvedPackage) -> buildPathEntryFor(packageName, resolvedPackage) }
                 BuildPathUpdater.ensureSourceEntries(manifestFile, dependencySourcePaths)
 
                 // Only new/version-changed packages get listed individually - pope_packages/ already
@@ -236,27 +235,29 @@ class PopePlugin : Plugin<Project> {
                 val registry = buildRegistry(extension)
                 val manifest = ManifestReader.read(manifestFile)
 
+                // Old lock entries for packages no longer in the resolved graph - the only way to
+                // find a removed package's own install location (registry root + its tracked files,
+                // or its isolated folder) without re-resolving something that's gone.
+                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
+
                 // Same resolution popeInstall does, to know what "stale" actually means right now.
                 val directSourceCacheDir = extension.cacheDir.get().asFile.resolve("_direct")
                 val resolvedPackages = DependencyResolver.resolveAll(manifest.dependencies, registry, directSourceCacheDir)
-                val expectedPaths =
-                    resolvedPackages.map { (packageName, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: packageName}/src"
-                    }.toSet()
+                val expectedPaths = resolvedPackages.map { (name, resolvedPackage) -> buildPathEntryFor(name, resolvedPackage) }.toSet()
 
                 val dryRun = project.hasProperty("popeDryRun")
 
-                val staleDirs = findStalePopePackagesDirs(projectRoot, expectedPaths)
+                val stalePackageKeys = existingLock.keys - resolvedPackages.keys
                 if (!dryRun) {
                     val popePackagesDir = projectRoot.resolve("pope_packages")
-                    staleDirs.forEach { (leafDir, _) ->
-                        leafDir.deleteRecursively()
-                        removeNowEmptyAncestors(leafDir.parentFile, popePackagesDir)
+                    stalePackageKeys.forEach { packageKey ->
+                        val affectedDirs = deleteInstalledPackage(popePackagesDir, packageKey, existingLock.getValue(packageKey))
+                        affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
                     }
                 }
                 val staleBuildPathPaths = BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths, dryRun)
 
-                val allStalePaths = (staleDirs.map { it.second } + staleBuildPathPaths).toSortedSet()
+                val allStalePaths = (stalePackageKeys + staleBuildPathPaths).toSortedSet()
                 if (allStalePaths.isEmpty()) {
                     project.logger.lifecycle("  nothing to remove")
                 } else {
@@ -292,44 +293,60 @@ class PopePlugin : Plugin<Project> {
                     "\"$packageName\" is not declared in dependencies - nothing to uninstall."
                 }
 
+                // Old lock entry for the package being removed - the only way to find its own
+                // install location (registry root + its tracked files, or its isolated folder)
+                // without re-resolving something that's about to be gone.
+                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
+
                 // Re-resolves what's left, same as popePrune, to know exactly
                 // what should still exist (including anything that was only
                 // pulled in transitively by the package being removed).
                 val remainingDependencies = manifest.dependencies - packageName
                 val directSourceCacheDir = extension.cacheDir.get().asFile.resolve("_direct")
                 val resolvedPackages = DependencyResolver.resolveAll(remainingDependencies, registry, directSourceCacheDir)
-                val expectedPaths =
-                    resolvedPackages.map { (name, resolvedPackage) ->
-                        "pope_packages/${resolvedPackage.installSubpath ?: name}/src"
-                    }.toSet()
+                val expectedPaths = resolvedPackages.map { (name, resolvedPackage) -> buildPathEntryFor(name, resolvedPackage) }.toSet()
 
+                // Every previously-locked key no longer in the remaining resolve, not just
+                // packageName itself - a transitive dependency that only packageName pulled in
+                // becomes stale here too, exactly like popePrune.
                 val popePackagesDir = projectRoot.resolve("pope_packages")
-                val staleDirs = findStalePopePackagesDirs(projectRoot, expectedPaths)
-                staleDirs.forEach { (leafDir, _) ->
-                    leafDir.deleteRecursively()
-                    removeNowEmptyAncestors(leafDir.parentFile, popePackagesDir)
+                val staleKeys = existingLock.keys - resolvedPackages.keys
+                staleKeys.forEach { staleKey ->
+                    val affectedDirs = deleteInstalledPackage(popePackagesDir, staleKey, existingLock.getValue(staleKey))
+                    affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
                 }
                 BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths)
                 DependenciesUpdater.removeDependency(manifestFile, packageName)
 
-                // Reuses each remaining package's already-known integrity
-                // rather than re-hashing - only falls back to a fresh hash
-                // if pope.lock didn't already have an entry for it.
-                val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
+                // Reuses each remaining package's already-known integrity/installSubpath/files
+                // rather than re-deriving them - none of that changed for packages that aren't
+                // being reinstalled here - only falls back to fresh values if pope.lock didn't
+                // already have an entry for it.
                 val resolvedJson = JSONObject()
                 resolvedPackages.forEach { (name, resolvedPackage) ->
-                    val integrity = existingLock[name]?.integrity ?: DirectoryHash.hash(resolvedPackage.sourceDir)
+                    val locked = existingLock[name]
+                    val integrity = locked?.integrity ?: DirectoryHash.hash(resolvedPackage.sourceDir)
                     resolvedJson.put(
                         name,
                         JSONObject()
                             .put("version", resolvedPackage.version)
                             .put("source", resolvedPackage.sourceDir.absolutePath)
-                            .put("integrity", integrity),
+                            .put("integrity", integrity)
+                            .putOpt("installSubpath", locked?.installSubpath ?: resolvedPackage.installSubpath)
+                            .put("files", JSONArray(locked?.files.orEmpty())),
                     )
                 }
-                projectRoot.resolve("pope.lock").writeText(JSONObject().put("resolved", resolvedJson).toString(2))
+                // Carries forward trust approvals for whichever direct-source dependencies are
+                // still part of the graph - dropped entirely before, which meant any uninstall
+                // silently wiped every trust approval, not just the removed package's own.
+                val existingTrust = LockfileReader.readTrustedDirectSources(projectRoot.resolve("pope.lock"))
+                val trustedDirectSourcesJson = JSONObject()
+                existingTrust.filterKeys { it in resolvedPackages }.forEach { (key, sourceKey) -> trustedDirectSourcesJson.put(key, sourceKey) }
 
-                project.logger.lifecycle("  removed \"$packageName\" (${staleDirs.size} package folder(s) cleaned up)")
+                val lockJson = JSONObject().put("resolved", resolvedJson).put("trustedDirectSources", trustedDirectSourcesJson)
+                projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
+
+                project.logger.lifecycle("  removed \"$packageName\"")
             }
         }
 
@@ -423,18 +440,69 @@ private fun buildRegistry(extension: PopeExtension): Registry {
     return PrefixRoutingRegistry(entries)
 }
 
-/** Every "src" dir under pope_packages/ not in expectedPaths, paired with its parent (the whole package folder to delete). */
-private fun findStalePopePackagesDirs(projectRoot: File, expectedPaths: Set<String>): List<Pair<File, String>> {
-    val popePackagesDir = projectRoot.resolve("pope_packages")
-    if (!popePackagesDir.isDirectory) return emptyList()
+/** The buildPath source entry for a resolved package - one per registry (shared), or one per package (isolated). */
+private fun buildPathEntryFor(packageKey: String, resolvedPackage: ResolvedPackage): String =
+    when (resolvedPackage.installLayout) {
+        InstallLayout.SharedRegistryRoot -> "pope_packages/${resolvedPackage.installSubpath}"
+        InstallLayout.Isolated -> "pope_packages/${resolvedPackage.installSubpath ?: packageKey}/src"
+    }
 
-    return popePackagesDir
-        .walkTopDown()
-        .filter { it.isDirectory && it.name == "src" }
-        .mapNotNull { srcDir ->
-            val relativePath = srcDir.relativeTo(projectRoot).invariantSeparatorsPath
-            if (relativePath in expectedPaths) null else srcDir.parentFile to relativePath
-        }.toList()
+/**
+ * Installs one resolved package under popePackagesDir, returning its relative file list
+ * (SharedRegistryRoot - multiple packages share one registry-named root, so only this package's own
+ * files are ever touched: copied in fresh, and anything in previousFiles but not the new set - a
+ * version bump that dropped/renamed a file - is deleted) or an empty list (Isolated - one dedicated
+ * folder per package, always safe to wipe and recopy wholesale, same as before).
+ */
+private fun installPackage(
+    popePackagesDir: File,
+    packageKey: String,
+    resolvedPackage: ResolvedPackage,
+    previousFiles: List<String>,
+): List<String> =
+    when (resolvedPackage.installLayout) {
+        InstallLayout.SharedRegistryRoot -> {
+            val destinationRoot = File(popePackagesDir, requireNotNull(resolvedPackage.installSubpath))
+            val newFiles = DirectoryHash.relativeFiles(resolvedPackage.sourceDir)
+            newFiles.forEach { relativePath ->
+                val destinationFile = File(destinationRoot, relativePath)
+                destinationFile.parentFile.mkdirs()
+                File(resolvedPackage.sourceDir, relativePath).copyTo(destinationFile, overwrite = true)
+            }
+
+            val staleFiles = previousFiles.toSet() - newFiles.toSet()
+            val affectedParents = staleFiles.map { relativePath -> File(destinationRoot, relativePath) }.onEach { it.delete() }
+            affectedParents.map { it.parentFile }.distinct().forEach { removeNowEmptyAncestors(it, popePackagesDir) }
+
+            newFiles
+        }
+        InstallLayout.Isolated -> {
+            val destination = File(popePackagesDir, resolvedPackage.installSubpath ?: packageKey).resolve("src")
+            destination.deleteRecursively()
+            resolvedPackage.sourceDir.copyRecursively(destination, overwrite = true)
+            emptyList()
+        }
+    }
+
+/**
+ * Removes a previously-locked, now-stale package's install output, using its OLD pope.lock entry
+ * (not a fresh resolve - the package is gone from the dependency graph, so there's nothing to
+ * re-resolve). SharedRegistryRoot: deletes exactly its own tracked files, leaving every sibling
+ * package in that same registry folder untouched. Isolated: deletes its whole dedicated folder, as
+ * before. Returns the set of directories to run removeNowEmptyAncestors from.
+ */
+private fun deleteInstalledPackage(popePackagesDir: File, packageKey: String, locked: LockedPackage): Set<File> {
+    val root = File(popePackagesDir, locked.installSubpath ?: packageKey)
+    if (locked.files.isEmpty()) {
+        root.deleteRecursively()
+        return setOf(root.parentFile)
+    }
+
+    return locked.files
+        .map { relativePath -> File(root, relativePath) }
+        .onEach { it.delete() }
+        .map { it.parentFile }
+        .toSet()
 }
 
 /** Deletes now-empty ancestor dirs (e.g. an emptied-out registry-prefix folder), stopping at stopAt or the first non-empty one. */

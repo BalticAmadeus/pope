@@ -7,6 +7,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -472,7 +473,7 @@ class PopePluginFunctionalTest {
     }
 
     @Test
-    fun `pope_packages nests a catalog-routed package by its registry prefix, and a direct-source one under _direct`() {
+    fun `pope_packages nests a catalog-routed package under its registry's own name, and a direct-source one under the shared dependencies root`() {
         val remotesRoot = createTempDirectory("pope-functional-test-nested-remotes").toFile()
 
         val greeterRepo = gitPackageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
@@ -533,7 +534,9 @@ class PopePluginFunctionalTest {
             pope {
                 cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
                 registries {
-                    create("ba") {
+                    // Named differently from its prefix ("registry-ba" vs. "ba.") - proves
+                    // pope_packages/ nests by the registry's own NAME, not its prefix.
+                    create("registry-ba") {
                         prefix.set("ba.")
                         catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
                     }
@@ -560,25 +563,28 @@ class PopePluginFunctionalTest {
             "Expected both ba.calculator and its transitive greeter dependency resolved, got:\n${installResult.output}",
         )
         assertTrue(
-            File(projectDir, "pope_packages/ba/calculator/src/calculator/Calculator.cls").exists(),
-            "Expected the catalog-routed package to be nested under pope_packages/ba/calculator",
+            File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected the catalog-routed package to land directly under the shared " +
+                "pope_packages/registry-ba root (registry name, not prefix, no /src)",
         )
         assertTrue(
-            File(projectDir, "pope_packages/_direct/greeter/src/greeter/Greeter.cls").exists(),
-            "Expected the direct-source dependency to be nested under pope_packages/_direct/greeter",
+            File(projectDir, "pope_packages/dependencies/greeter/Greeter.cls").exists(),
+            "Expected the direct-source dependency to land directly under the shared " +
+                "pope_packages/dependencies root, same as a shared registry root, no /src",
         )
         assertTrue(
             buildPathOf(projectDir).containsAll(
-                listOf("pope_packages/ba/calculator/src", "pope_packages/_direct/greeter/src"),
+                listOf("pope_packages/registry-ba", "pope_packages/dependencies"),
             ),
-            "Expected buildPath to reference the nested paths, got: ${buildPathOf(projectDir)}",
+            "Expected buildPath to reference the shared registry root and the shared " +
+                "direct-source root, got: ${buildPathOf(projectDir)}",
         )
     }
 
     // --- explicit "registryName/localName" selection ---
 
     @Test
-    fun `an explicit registryName-localName dependency resolves via that registry, nested by its real prefix`() {
+    fun `an explicit registryName-localName dependency resolves via that registry, nested under its shared registry root`() {
         val remotesRoot = createTempDirectory("pope-functional-test-explicit-remotes").toFile()
         val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
 
@@ -639,9 +645,10 @@ class PopePluginFunctionalTest {
             "Expected the explicitly-selected registry-ba/calculator resolved, got:\n${installResult.output}",
         )
         assertTrue(
-            File(projectDir, "pope_packages/ba/calculator/src/calculator/Calculator.cls").exists(),
-            "Expected the explicitly-selected package to land at pope_packages/ba/calculator " +
-                "(its real prefix), not pope_packages/registry-ba/calculator (its dependency key)",
+            File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected the explicitly-selected package to land directly under the shared " +
+                "pope_packages/registry-ba root (the registry's own name), not by its prefix \"ba\" " +
+                "or nested in a further per-package subfolder",
         )
     }
 
@@ -706,6 +713,337 @@ class PopePluginFunctionalTest {
         assertTrue(
             installResult.output.contains("did you mean \"calculator\"?"),
             "Expected a \"did you mean\" suggestion pointing at the real package, got:\n${installResult.output}",
+        )
+    }
+
+    // --- shared registry root: multiple packages, one pope_packages/<registryName> folder ---
+
+    private fun addCatalogReference(catalogDir: File, localName: String, version: String, repoDir: File, ref: String) {
+        File(catalogDir, "packages/$localName").mkdirs()
+        File(catalogDir, "packages/$localName/$version.json").writeText(
+            JSONObject()
+                .put("repoUrl", repoDir.absolutePath.replace("\\", "/"))
+                .put("version", version)
+                .put("ref", ref)
+                .toString(2),
+        )
+        git(catalogDir, "add", "-A")
+        git(catalogDir, "commit", "-m", "add $localName $version")
+    }
+
+    @Test
+    fun `two packages from the same registry share one pope_packages root with no file collisions`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-shared-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-shared-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-shared-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "shared-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "shared-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall")
+
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected calculator's file under the shared registry-ba root",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/logger/Logger.cls").exists(),
+            "Expected logger's file under the same shared registry-ba root, alongside calculator's",
+        )
+        assertEquals(
+            listOf("pope_packages/registry-ba"),
+            buildPathOf(projectDir).filter { it.startsWith("pope_packages/registry-ba") },
+            "Expected exactly one shared buildPath entry for both packages, got: ${buildPathOf(projectDir)}",
+        )
+    }
+
+    @Test
+    fun `uninstalling one of two packages from the same registry removes only its files`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-shared-uninstall-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-shared-uninstall-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-shared-uninstall-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "shared-uninstall-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "shared-uninstall-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall")
+        run(projectDir, "popeUninstall", "-PpopeUninstall=registry-ba/calculator")
+
+        assertTrue(
+            !File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected calculator's own file to be removed",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/logger/Logger.cls").exists(),
+            "Expected logger's file to survive - only calculator was uninstalled, from the same shared root",
+        )
+        assertTrue(
+            buildPathOf(projectDir).contains("pope_packages/registry-ba"),
+            "Expected the shared buildPath entry to survive since logger still needs it, got: ${buildPathOf(projectDir)}",
+        )
+    }
+
+    @Test
+    fun `reinstalling a package at a version that drops a file removes only that file, sibling untouched`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-shared-upgrade-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        // calculator 1.0.0 has an extra file that 1.0.1 will drop.
+        File(calculatorRepo, "src/calculator/Old.cls").writeText("class calculator.Old:\nend class.")
+        git(calculatorRepo, "add", "-A")
+        git(calculatorRepo, "commit", "-m", "add Old.cls")
+        git(calculatorRepo, "tag", "-f", "v1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-shared-upgrade-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-shared-upgrade-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "shared-upgrade-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "shared-upgrade-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall")
+        assertTrue(File(projectDir, "pope_packages/registry-ba/calculator/Old.cls").exists(), "Sanity check: Old.cls installed at 1.0.0")
+
+        // 1.0.1 drops Old.cls - same repo, new tag, new catalog reference.
+        File(calculatorRepo, "src/calculator/Old.cls").delete()
+        File(calculatorRepo, "openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "calculator-repo-project")
+                .put("version", "1.0.1")
+                .put("package_name", "calculator")
+                .put("dependencies", JSONObject())
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        git(calculatorRepo, "add", "-A")
+        git(calculatorRepo, "commit", "-m", "drop Old.cls in 1.0.1")
+        git(calculatorRepo, "tag", "v1.0.1")
+        addCatalogReference(catalogDir, "calculator", "1.0.1", calculatorRepo, "v1.0.1")
+
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "shared-upgrade-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.1").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        run(projectDir, "popeInstall")
+
+        assertTrue(
+            !File(projectDir, "pope_packages/registry-ba/calculator/Old.cls").exists(),
+            "Expected Old.cls, dropped in 1.0.1, to be removed on reinstall",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected Calculator.cls to still be present after the upgrade",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/logger/Logger.cls").exists(),
+            "Expected logger's file to be completely untouched by calculator's upgrade",
+        )
+    }
+
+    @Test
+    fun `popePrune removes one dropped package's files while its sibling survives, then the registry root once both are gone`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-shared-prune-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-shared-prune-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-shared-prune-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "shared-prune-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        fun manifestWith(dependencies: JSONObject) =
+            JSONObject()
+                .put("name", "shared-prune-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put("dependencies", dependencies)
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2)
+
+        // Only patches "dependencies" on the manifest already on disk - real usage never touches
+        // buildPath directly, and popeInstall's own pope_packages entries must survive untouched.
+        fun setDependencies(dependencies: JSONObject) {
+            val manifestFile = projectDir.resolve("openedge-project.json")
+            val json = JSONObject(manifestFile.readText()).put("dependencies", dependencies)
+            manifestFile.writeText(json.toString(2))
+        }
+
+        projectDir.resolve("openedge-project.json").writeText(
+            manifestWith(JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0")),
+        )
+        run(projectDir, "popeInstall")
+
+        // Drop calculator from the manifest directly (not via popeUninstall) - popePrune's own
+        // stale-detection path, separate code from popeUninstall's.
+        setDependencies(JSONObject().put("registry-ba/logger", "^1.0.0"))
+        run(projectDir, "popePrune")
+
+        assertTrue(
+            !File(projectDir, "pope_packages/registry-ba/calculator/Calculator.cls").exists(),
+            "Expected calculator's file removed by prune",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/registry-ba/logger/Logger.cls").exists(),
+            "Expected logger's file to survive - only calculator was dropped",
+        )
+        assertTrue(
+            buildPathOf(projectDir).contains("pope_packages/registry-ba"),
+            "Expected the shared buildPath entry to survive since logger still needs it",
+        )
+
+        // Now drop logger too - the last package from this registry - and prune again.
+        setDependencies(JSONObject())
+        run(projectDir, "popePrune")
+
+        assertTrue(
+            !File(projectDir, "pope_packages/registry-ba").exists(),
+            "Expected the now-empty shared registry root itself to be cleaned up",
+        )
+        assertTrue(
+            !buildPathOf(projectDir).contains("pope_packages/registry-ba"),
+            "Expected the buildPath entry to be pruned once nothing from that registry remains",
         )
     }
 
@@ -1018,6 +1356,88 @@ class PopePluginFunctionalTest {
         assertTrue(
             result.output.contains("example.nonexistent") && result.output.contains("not declared"),
             "Expected a clear error naming example.nonexistent, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `popeUninstall carries forward trustedDirectSources for dependencies that are still part of the graph`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-uninstall-trust-remotes").toFile()
+        val greeterRepo = gitPackageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.0")
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        File(calculatorRepo, "openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "calculator-repo-project")
+                .put("version", "1.0.0")
+                .put("package_name", "calculator")
+                .put(
+                    "dependencies",
+                    JSONObject().put(
+                        "greeter",
+                        JSONObject().put("repoUrl", greeterRepo.absolutePath.replace("\\", "/")).put("ref", "v1.0.0"),
+                    ),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        git(calculatorRepo, "add", "-A")
+        git(calculatorRepo, "commit", "-m", "declare direct-source dependency on greeter")
+        git(calculatorRepo, "tag", "-f", "v1.0.0")
+        val loggerRepo = gitPackageRepo(remotesRoot, "logger-repo", "logger", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+        addCatalogReference(catalogDir, "logger", "1.0.0", loggerRepo, "v1.0.0")
+
+        val projectDir = createTempDirectory("pope-functional-test-uninstall-trust-project").toFile()
+        val cacheDir = createTempDirectory("pope-functional-test-uninstall-trust-cache").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "uninstall-trust-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "uninstall-trust-fixture")
+                .put("version", "1.0.0")
+                .put("package_name", "example.consumer")
+                .put(
+                    "dependencies",
+                    JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+
+        run(projectDir, "popeInstall", "-PpopeTrustAll")
+        assertTrue(
+            JSONObject(File(projectDir, "pope.lock").readText()).getJSONObject("trustedDirectSources").has("greeter"),
+            "Sanity check: greeter trusted after the initial install",
+        )
+
+        // logger has nothing to do with greeter/calculator - uninstalling it shouldn't touch
+        // greeter's trust approval at all.
+        run(projectDir, "popeUninstall", "-PpopeUninstall=registry-ba/logger")
+
+        assertTrue(
+            JSONObject(File(projectDir, "pope.lock").readText()).getJSONObject("trustedDirectSources").has("greeter"),
+            "Expected greeter's trust approval to survive uninstalling an unrelated package",
         )
     }
 }
