@@ -19,11 +19,14 @@ object BuildPathUpdater {
                 .map { buildPath.getJSONObject(it) }
                 .filter { it.optString("type") == "source" }
                 .map { it.getString("path") }
-                .toSet()
+                .toMutableSet()
 
         var changed = false
         for (path in paths) {
-            if (path !in existingPaths) {
+            // Checked against the growing set, not just what was already there before this call -
+            // paths can legitimately repeat within one call now (e.g. two packages sharing one
+            // registry's buildPath entry), and each should only ever be added once.
+            if (existingPaths.add(path)) {
                 buildPath.put(JSONObject().put("type", "source").put("path", path))
                 changed = true
             }

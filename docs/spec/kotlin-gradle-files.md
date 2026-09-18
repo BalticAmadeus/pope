@@ -197,9 +197,17 @@ happens:
       (**`IntegrityChecker.kt`**) *before* anything is copied — a tampered
       or force-moved tag fails loudly here, first.
    f. Each resolved package's source is copied into
-      `pope_packages/<installSubpath>/src` — nested by registry prefix
-      (`pope_packages/ba/calculator/src`) or under `_direct/` for a
-      direct-source dependency, overwriting whatever was there before.
+      `pope_packages/<installSubpath>/` — every package resolved from one
+      registry shares that registry's own `pope_packages/<registryName>/`
+      root (`pope_packages/registry-ba/`), and every direct-source
+      dependency shares one `pope_packages/dependencies/` root, regardless
+      of which registry (if any) declared it. A package's own source root
+      already mirrors its real `package_name` as nested folders (a hard
+      ABL/PROPATH requirement), so no further per-package subfolder is
+      needed — `org/package` nesting comes for free from the package's own
+      content. Because multiple packages can share one root, install only
+      copies/removes that one package's own files (tracked in `pope.lock`,
+      see `lockfile-format.md`), never wipes the whole folder.
    g. Only now, because resolution succeeded, does
       **`DependenciesUpdater.kt`** write the new dependency into
       `openedge-project.json`. If any earlier step failed, this write

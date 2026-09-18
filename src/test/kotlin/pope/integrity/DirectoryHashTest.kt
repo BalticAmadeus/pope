@@ -56,4 +56,21 @@ class DirectoryHashTest {
 
         assertNotEquals(DirectoryHash.hash(dirA), DirectoryHash.hash(dirB))
     }
+
+    @Test
+    fun `relativeFiles lists every file, sorted, with forward slashes regardless of OS`() {
+        val dir = dirWith("b.txt" to "1", "sub/a.txt" to "2", "a.txt" to "3")
+
+        assertEquals(listOf("a.txt", "b.txt", "sub/a.txt"), DirectoryHash.relativeFiles(dir))
+    }
+
+    @Test
+    fun `relativeFiles is the same enumeration hash() hashes`() {
+        val dir = dirWith("a.txt" to "hello", "sub/b.txt" to "world")
+
+        val files = DirectoryHash.relativeFiles(dir)
+
+        assertEquals(setOf("a.txt", "sub/b.txt"), files.toSet())
+        assertTrue(files.all { File(dir, it).isFile })
+    }
 }

@@ -1,5 +1,6 @@
 package pope.registry
 
+import pope.suggest.NoRegistryPrefixMatchException
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,12 +8,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private class FakeRegistry(private val label: String) : Registry {
+private class FakeRegistry(private val label: String, private val suggestion: String? = null) : Registry {
     override fun resolve(packageName: String, versionSpec: String) =
         ResolvedPackage(packageName, "1.0.0", File(label), File(label))
 
     override fun findAny(packageName: String): ResolvedPackage? =
         if (packageName.contains("missing")) null else ResolvedPackage(packageName, "1.0.0", File(label), File(label))
+
+    override fun suggestAny(packageName: String): String? = suggestion
 }
 
 class PrefixRoutingRegistryTest {
@@ -48,7 +51,7 @@ class PrefixRoutingRegistryTest {
                 listOf(RegistryEntry("ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw"))),
             )
 
-        val exception = assertFailsWith<IllegalStateException> { registry.findAny("acme.calculator") }
+        val exception = assertFailsWith<NoRegistryPrefixMatchException> { registry.findAny("acme.calculator") }
 
         assertTrue(exception.message!!.contains("acme.calculator"))
         assertTrue(exception.message!!.contains("ba."))
@@ -102,5 +105,78 @@ class PrefixRoutingRegistryTest {
         val registry = PrefixRoutingRegistry(listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba"))))
 
         assertEquals("ba.calculator", registry.resolve("ba.calculator", "^1.0.0").packageName)
+    }
+
+    // --- findAllMatches: bare-name search across every registry ---
+
+    @Test
+    fun `findAllMatches returns an empty list when no configured registry has that local name`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw"))),
+            )
+
+        assertEquals(emptyList(), registry.findAllMatches("missing"))
+    }
+
+    @Test
+    fun `findAllMatches returns exactly one entry, paired with its explicit registryName-localName form`() {
+        // cw's prefix makes its reconstructed name "missing.calculator", tripping FakeRegistry's
+        // "not found" convention - only registry-ba's "ba.calculator" matches.
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "missing.", FakeRegistry("cw"))),
+            )
+
+        val matches = registry.findAllMatches("calculator")
+
+        assertEquals(1, matches.size)
+        assertEquals("registry-ba", matches.single().first.name)
+        assertEquals("registry-ba/calculator", matches.single().second)
+    }
+
+    @Test
+    fun `findAllMatches returns every matching registry when more than one has it`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw"))),
+            )
+
+        val matches = registry.findAllMatches("calculator")
+
+        assertEquals(
+            setOf("registry-ba/calculator", "cw/calculator"),
+            matches.map { it.second }.toSet(),
+        )
+    }
+
+    @Test
+    fun `findAllMatches searches every entry regardless of prefix - not the same routing as route()`() {
+        val registry = PrefixRoutingRegistry(listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba"))))
+
+        assertFailsWith<NoRegistryPrefixMatchException> { registry.resolve("acme", "^1.0.0") }
+        assertEquals(listOf("registry-ba/acme"), registry.findAllMatches("acme").map { it.second })
+    }
+
+    // --- suggestAcrossRegistries: "did you mean X?" across every registry ---
+
+    @Test
+    fun `suggestAcrossRegistries returns null when no registry has a suggestion`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw"))),
+            )
+
+        assertNull(registry.suggestAcrossRegistries("claculator"))
+    }
+
+    @Test
+    fun `suggestAcrossRegistries returns a match in registryName-localName form`() {
+        val registry =
+            PrefixRoutingRegistry(
+                listOf(RegistryEntry("registry-ba", "ba.", FakeRegistry("ba")), RegistryEntry("cw", "cw.", FakeRegistry("cw", "calculator"))),
+            )
+
+        assertEquals("cw/calculator", registry.suggestAcrossRegistries("claculator"))
     }
 }
