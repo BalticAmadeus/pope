@@ -71,7 +71,7 @@ two enforcement points, not a finished tool.
   include reference) — a one-line-per-include migration, not a rewrite.
 - Does not protect against two unrelated packages choosing the *same
   namespace* (e.g. two independently-authored `acme.utils` packages) —
-  that's a separate, still-open problem, see the `pope_package_name` uniqueness
+  that's a separate, still-open problem, see the `popePackageName` uniqueness
   open question in [manifest-schema.md](../spec/manifest-schema.md).
 - Lint tooling for both enforcement points is new implementation work, not
   yet scoped in detail — needs a component-scope entry alongside the ones

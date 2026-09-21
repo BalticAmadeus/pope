@@ -18,7 +18,7 @@ explicitly deferred, not built preemptively.
 
 | # | Component | What it does | Reference analogy | pope v1 status |
 |---|---|---|---|---|
-| 1 | Manifest format | Declares a package's identity, version, dependencies | `package.json` | Decided — single file, `openedge-project.json` with pope-specific keys added (`pope_package_name`, `pope_dependencies`, `package_root`), not a separate `pope.json`. See `docs/spec/manifest-schema.md`. |
+| 1 | Manifest format | Declares a package's identity, version, dependencies | `package.json` | Decided — single file, `openedge-project.json` with pope-specific keys added (`popePackageName`, `popeDependencies`, `package_root`), not a separate `pope.json`. See `docs/spec/manifest-schema.md`. |
 | 2 | Dependency resolver | Picks one consistent version per package across the graph; detects unsatisfiable conflicts | npm/Cargo resolver | Decided — delegate to Gradle/Ivy's resolver rather than build our own (ADR-0001) |
 | 3 | Registry / repository | Where package versions actually live and can be looked up | npm registry, Maven Central | Decided for v1 — local filesystem directory only, no HTTP registry |
 | 4 | Fetcher | Retrieves a package's files from the registry | npm downloading a tarball | Trivial for v1 — registry is a local folder, mostly a file copy |
