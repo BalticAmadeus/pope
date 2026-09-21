@@ -2,8 +2,8 @@
   "name": "calculator-package",
   "version": "1.0.0",
   "oeversion": "12.8",
-  "pope_package_name": "example.calculator",
-  "pope_dependencies": {
+  "popePackageName": "example.calculator",
+  "popeDependencies": {
     "example.greeter": "^1.0.0"
   },
   "buildPath": [

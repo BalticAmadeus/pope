@@ -65,8 +65,8 @@ class PublishedPluginFunctionalTest {
             JSONObject()
                 .put("name", "published-consumer-fixture")
                 .put("version", "1.0.0")
-                .put("pope_package_name", "example.publishedconsumer")
-                .put("pope_dependencies", JSONObject().put("example.greeter", "^1.0.0"))
+                .put("popePackageName", "example.publishedconsumer")
+                .put("popeDependencies", JSONObject().put("example.greeter", "^1.0.0"))
                 .put(
                     "buildPath",
                     org.json.JSONArray().put(JSONObject().put("type", "source").put("path", "src")),

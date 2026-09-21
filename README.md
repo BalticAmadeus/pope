@@ -127,13 +127,13 @@ your-package/
 {
   "name": "your-package",
   "version": "1.0.0",
-  "pope_package_name": "yourorg.yourpackage",
-  "pope_dependencies": {},
+  "popePackageName": "yourorg.yourpackage",
+  "popeDependencies": {},
   "buildPath": [{ "type": "source", "path": "src" }]
 }
 ```
 The folder structure under `src/` must mirror the class namespace - an
-ABL requirement, not a pope one. Fold your org into `pope_package_name`/the
+ABL requirement, not a pope one. Fold your org into `popePackageName`/the
 namespace (e.g. `yourorg.yourpackage`, not bare `yourpackage`) so it
 doesn't collide with someone else's package of the same name - pope
 doesn't enforce this itself, it only catches an actual collision at
