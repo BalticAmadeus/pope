@@ -16,8 +16,8 @@ class DependenciesUpdaterTest {
             {
               "name": "consumer-app",
               "version": "1.0.0",
-              "package_name": "example.consumer",
-              "dependencies": $dependenciesJson,
+              "pope_package_name": "example.consumer",
+              "pope_dependencies": $dependenciesJson,
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -31,7 +31,7 @@ class DependenciesUpdaterTest {
 
         DependenciesUpdater.addDependency(file, "example.calculator", "^1.0.0")
 
-        val dependencies = JSONObject(file.readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(file.readText()).getJSONObject("pope_dependencies")
         assertEquals("^1.0.0", dependencies.getString("example.calculator"))
     }
 
@@ -41,7 +41,7 @@ class DependenciesUpdaterTest {
 
         DependenciesUpdater.addDependency(file, "example.calculator", "^1.0.0")
 
-        val dependencies = JSONObject(file.readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(file.readText()).getJSONObject("pope_dependencies")
         assertEquals("^1.0.0", dependencies.getString("example.calculator"))
         assertEquals("^2.0.0", dependencies.getString("example.greeter"))
     }
@@ -52,7 +52,7 @@ class DependenciesUpdaterTest {
 
         DependenciesUpdater.addDependency(file, "example.calculator", "^2.0.0")
 
-        val dependencies = JSONObject(file.readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(file.readText()).getJSONObject("pope_dependencies")
         assertEquals("^2.0.0", dependencies.getString("example.calculator"))
     }
 
@@ -62,7 +62,7 @@ class DependenciesUpdaterTest {
 
         DependenciesUpdater.removeDependency(file, "example.calculator")
 
-        val dependencies = JSONObject(file.readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(file.readText()).getJSONObject("pope_dependencies")
         assertTrue(!dependencies.has("example.calculator"))
         assertEquals("^2.0.0", dependencies.getString("example.greeter"))
     }
@@ -73,7 +73,7 @@ class DependenciesUpdaterTest {
 
         DependenciesUpdater.removeDependency(file, "example.calculator")
 
-        val dependencies = JSONObject(file.readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(file.readText()).getJSONObject("pope_dependencies")
         assertEquals("^2.0.0", dependencies.getString("example.greeter"))
     }
 
@@ -85,7 +85,7 @@ class DependenciesUpdaterTest {
             {
               "name": "consumer-app",
               "version": "1.0.0",
-              "package_name": "example.consumer",
+              "pope_package_name": "example.consumer",
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -98,9 +98,9 @@ class DependenciesUpdaterTest {
         // text can confirm where the newly-added key actually landed.
         val text = file.readText()
         assertTrue(
-            text.indexOf("\"version\"") < text.indexOf("\"dependencies\"") &&
-                text.indexOf("\"dependencies\"") < text.indexOf("\"buildPath\""),
-            "Expected \"dependencies\" right after \"version\", got:\n$text",
+            text.indexOf("\"version\"") < text.indexOf("\"pope_dependencies\"") &&
+                text.indexOf("\"pope_dependencies\"") < text.indexOf("\"buildPath\""),
+            "Expected \"pope_dependencies\" right after \"version\", got:\n$text",
         )
     }
 }

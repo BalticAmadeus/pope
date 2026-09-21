@@ -2,8 +2,8 @@
   "name": "greeter-package",
   "version": "1.0.0",
   "oeversion": "12.8",
-  "package_name": "example.greeter",
-  "dependencies": {},
+  "pope_package_name": "example.greeter",
+  "pope_dependencies": {},
   "buildPath": [
     {
       "type": "source",

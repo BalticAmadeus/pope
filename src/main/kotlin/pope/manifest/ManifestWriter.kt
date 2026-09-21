@@ -11,7 +11,7 @@ import java.io.StringWriter
  * on its own. Every pope write path routes through here. Purely cosmetic.
  */
 object ManifestWriter {
-    private val canonicalKeyOrder = listOf("name", "version", "oeversion", "package_name", "dependencies", "buildPath")
+    private val canonicalKeyOrder = listOf("name", "version", "oeversion", "pope_package_name", "pope_dependencies", "buildPath")
     private const val indentFactor = 2
 
     fun write(file: File, json: JSONObject) {
