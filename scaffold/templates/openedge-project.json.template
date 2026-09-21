@@ -1,8 +1,8 @@
 {
   "name": "{{PROJECT_NAME}}",
   "version": "1.0.0",
-  "pope_package_name": "{{PACKAGE_NAME}}",
-  "pope_dependencies": {},
+  "popePackageName": "{{PACKAGE_NAME}}",
+  "popeDependencies": {},
   "buildPath": [
     { "path": "src", "type": "source" }
   ]

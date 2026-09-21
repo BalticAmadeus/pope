@@ -152,7 +152,7 @@ adopted for a different problem: [ADR-0007](../decisions/0007-namespace-relative
 the same bare name and hoping resolution order sorts it out was the bug,
 not the fix. The equivalent guidance here would be: a package making a
 genuinely breaking change is encouraged to publish under a new
-`pope_package_name` (e.g. `example.greeter2`) rather than expecting the
+`popePackageName` (e.g. `example.greeter2`) rather than expecting the
 resolver to reconcile two callers who fundamentally can't agree. Costs
 nothing to implement (it's a recommendation, not a mechanism) but relies
 on package authors actually following it.

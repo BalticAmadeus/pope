@@ -67,7 +67,7 @@ The entry point. Everything starts here.
     the full graph via `DependencyResolver`, integrity-checks each package
     against `pope.lock` *before* copying anything, installs each package
     (`installPackage` — see below), then writes `pope.lock`, updates
-    `pope_dependencies` (only if `-PpopeAdd` was used), and updates `buildPath`.
+    `popeDependencies` (only if `-PpopeAdd` was used), and updates `buildPath`.
     Order matters: nothing touches disk until resolution has fully
     succeeded. A direct-source dependency not already trusted in
     `pope.lock` prompts via `TrustPrompt` before it's fetched; `-PpopeTrustAll`
@@ -147,7 +147,7 @@ Pure data. No logic.
     `{ repoUrl, ref }` object; fetched straight from git, no registry
     involved.
 - **`data class Manifest`** — the parsed form of `openedge-project.json`:
-  `name`, `version`, `packageName`, `pope_dependencies` (map of name →
+  `name`, `version`, `packageName`, `popeDependencies` (map of name →
   `DependencySpec`), `sourceRoots` (`buildPath` entries of type
   `"source"`; the first also acts as the package root), `testRoots`
   (`buildPath` entries of type `"test"`; only ever used for *this*
@@ -157,11 +157,11 @@ Pure data. No logic.
 
 - **`object ManifestReader`**, one public `read(file): Manifest`.
 - Parses `buildPath` into `sourceRoots` / `testRoots`.
-- If `pope_package_name` is missing from the JSON, calls
+- If `popePackageName` is missing from the JSON, calls
   `inferAndPersistPackageName(...)` which uses `PackageNameInferrer` to
   derive it from `.cls` files and writes it back to disk, so inference
   runs at most once.
-- `parseDependencySpec(...)` turns each `pope_dependencies` value into a
+- `parseDependencySpec(...)` turns each `popeDependencies` value into a
   `DependencySpec.Registry` (string value) or `DependencySpec.DirectSource`
   (object value), throwing a clear error on anything else.
 
@@ -170,8 +170,8 @@ Pure data. No logic.
 - **`object ManifestWriter`**, one public `write(file, json)`.
 - Exists purely for formatting. `org.json.JSONObject` is `HashMap`-backed
   and will not serialize keys in a stable order, so this writes a fixed
-  key order (`name`, `version`, `oeversion`, `pope_package_name`,
-  `pope_dependencies`, `buildPath`, then anything else) with 2-space indent.
+  key order (`name`, `version`, `oeversion`, `popePackageName`,
+  `popeDependencies`, `buildPath`, then anything else) with 2-space indent.
 - Every pope code path that writes the manifest goes through here.
 
 ### `manifest/PackageNameInferrer.kt`
@@ -201,7 +201,7 @@ Pure data. No logic.
 
 - **`object DependenciesUpdater`**, one public
   `addDependency(manifestFile, packageName, versionSpec)`.
-- Adds/overwrites one entry in the manifest's `pope_dependencies` map on disk.
+- Adds/overwrites one entry in the manifest's `popeDependencies` map on disk.
   This is what `-PpopeAdd=...` uses instead of a hand edit. Only called
   after resolution succeeds.
 
@@ -250,7 +250,7 @@ Pure data. No logic.
 - Only used as the fallback when no other registry is configured.
 - `findAny` lists candidate folders, reads each manifest, and uses
   `PackageMatcher.selectUnique` to pick the one folder whose
-  `pope_package_name` matches. `resolve` then also checks the version against
+  `popePackageName` matches. `resolve` then also checks the version against
   the caret range.
 
 ### `registry/CatalogRegistry.kt`
@@ -337,7 +337,7 @@ Pure data. No logic.
 - **`object PackageMatcher`**, one generic function `selectUnique(...)`.
 - Given a list of `(location, Manifest)` candidates and a target
   `packageName`, returns the single candidate whose manifest declares that
-  name. More than one match is a loud error (`pope_package_name` must be
+  name. More than one match is a loud error (`popePackageName` must be
   unique). Zero matches returns `null`.
 - Shared helper; currently used by `LocalDirectoryRegistry`.
 
@@ -406,7 +406,7 @@ Pure data. No logic.
     registry prefix (the class doc explains why: two differently-routed
     parents sharing one repo would otherwise get two keys).
 - After the whole graph is known, `checkNoNamespaceCollision(...)` groups
-  resolved packages by their real `pope_package_name`. Two different keys that
+  resolved packages by their real `popePackageName`. Two different keys that
   resolve to the same real ABL namespace would silently shadow each other
   on PROPATH, so this fails loudly instead. (This is the
   `PROPATH namespace collision` check referenced in project memory.)
@@ -471,11 +471,11 @@ repos where needed, with no Gradle build involved.
 | Test file | Exercises |
 |---|---|
 | `version/CaretRangeTest.kt` | `SemVer` parsing/compare and `CaretRange.satisfies` edge cases (the 0.x tightening rules) |
-| `manifest/ManifestReaderTest.kt` | Parsing `openedge-project.json`, `buildPath` splitting, `pope_package_name` auto-infer and write-back, dependency-shape errors |
+| `manifest/ManifestReaderTest.kt` | Parsing `openedge-project.json`, `buildPath` splitting, `popePackageName` auto-infer and write-back, dependency-shape errors |
 | `manifest/ManifestWriterTest.kt` | Fixed key order and indentation of written manifests |
 | `manifest/PackageNameInferrerTest.kt` | Namespace extraction from `.cls` files; failure on disagreement or no matches |
 | `manifest/BuildPathUpdaterTest.kt` | Additive `ensureSourceEntries`; selective `pruneStalePopePackagesEntries` and its dry-run |
-| `manifest/DependenciesUpdaterTest.kt` | Adding a `pope_dependencies` entry without disturbing the rest of the file |
+| `manifest/DependenciesUpdaterTest.kt` | Adding a `popeDependencies` entry without disturbing the rest of the file |
 | `registry/CatalogRegistryTest.kt` | Catalog clone, version-file discovery, best-match vs `findAny`, `hasAny`/`suggestAny` (true/false, closest typo match, never fetch the package), `installSubpath`, error messages |
 | `registry/LocalDirectoryRegistryTest.kt` | Folder-per-package discovery, version-range check, fallback behavior |
 | `registry/PrefixRoutingRegistryTest.kt` | Longest-prefix routing; explicit `registryName/localName` routing; `findAllMatches`/`suggestAcrossRegistries` across every registry; loud error on no match |

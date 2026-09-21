@@ -108,12 +108,12 @@ discussed and decided *against* building, for now - worth knowing so they
 don't get re-litigated from scratch or assumed to be oversights:
 
 - **Package namespace uniqueness is left as author convention, not
-  enforced by the tool.** `pope_package_name` is free text; nothing stops two
+  enforced by the tool.** `popePackageName` is free text; nothing stops two
   authors from picking the same one. The real safety net is
   `DependencyResolver`'s namespace-collision check, which fails loudly
   *if* a project ends up depending on two packages that collide — but
   that's a per-project catch, not a global guarantee. See
-  `docs/spec/manifest-schema.md`'s `pope_package_name` row and open questions.
+  `docs/spec/manifest-schema.md`'s `popePackageName` row and open questions.
 - **A `"resources"`/images `buildPath` type** (alongside `"source"`/`"test"`)
   was discussed and deliberately left out — no decided use case yet, and
   it needs its own call on whether/how it belongs on PROPATH at all. See

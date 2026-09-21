@@ -15,8 +15,8 @@ class BuildPathUpdaterTest {
             {
               "name": "consumer-app",
               "version": "1.0.0",
-              "pope_package_name": "example.consumer",
-              "pope_dependencies": {},
+              "popePackageName": "example.consumer",
+              "popeDependencies": {},
               "buildPath": [$buildPath]
             }
             """.trimIndent(),

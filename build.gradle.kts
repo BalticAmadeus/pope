@@ -304,12 +304,12 @@ tasks.register("scaffoldProject") {
             val json = org.json.JSONObject(manifestFile.readText())
             var patched = false
 
-            if (!json.has("pope_dependencies")) {
-                json.put("pope_dependencies", org.json.JSONObject())
+            if (!json.has("popeDependencies")) {
+                json.put("popeDependencies", org.json.JSONObject())
                 patched = true
             }
 
-            if (!json.has("pope_package_name")) {
+            if (!json.has("popePackageName")) {
                 val sourceRoot =
                     json.optJSONArray("buildPath")?.let { entries ->
                         (0 until entries.length())
@@ -318,7 +318,7 @@ tasks.register("scaffoldProject") {
                             ?.optString("path")
                     } ?: "src"
                 val packageName = resolvePackageName(explicitPackageName, File(targetDir, sourceRoot))
-                json.put("pope_package_name", packageName)
+                json.put("popePackageName", packageName)
                 logger.lifecycle("  + added package_name: \"$packageName\" to openedge-project.json")
                 patched = true
             }

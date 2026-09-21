@@ -18,8 +18,8 @@ class LocalDirectoryRegistryTest {
             {
               "name": "$packageName-project",
               "version": "$version",
-              "pope_package_name": "$packageName",
-              "pope_dependencies": {},
+              "popePackageName": "$packageName",
+              "popeDependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -88,8 +88,8 @@ class LocalDirectoryRegistryTest {
                 {
                   "name": "$folderName",
                   "version": "1.0.0",
-                  "pope_package_name": "example.greeter",
-                  "pope_dependencies": {},
+                  "popePackageName": "example.greeter",
+                  "popeDependencies": {},
                   "buildPath": [{ "type": "source", "path": "src" }]
                 }
                 """.trimIndent(),

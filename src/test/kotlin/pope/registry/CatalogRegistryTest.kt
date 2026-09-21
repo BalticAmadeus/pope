@@ -35,8 +35,8 @@ class CatalogRegistryTest {
             {
               "name": "$folderName",
               "version": "$version",
-              "pope_package_name": "$packageName",
-              "pope_dependencies": {},
+              "popePackageName": "$packageName",
+              "popeDependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -253,8 +253,8 @@ class CatalogRegistryTest {
             {
               "name": "calculator-package-project",
               "version": "2.0.0",
-              "pope_package_name": "example.calculator",
-              "pope_dependencies": {},
+              "popePackageName": "example.calculator",
+              "popeDependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -298,8 +298,8 @@ class CatalogRegistryTest {
                 {
                   "name": "$folderName",
                   "version": "$version",
-                  "pope_package_name": "$packageName",
-                  "pope_dependencies": {},
+                  "popePackageName": "$packageName",
+                  "popeDependencies": {},
                   "buildPath": [{ "type": "source", "path": "src" }]
                 }
                 """.trimIndent(),
