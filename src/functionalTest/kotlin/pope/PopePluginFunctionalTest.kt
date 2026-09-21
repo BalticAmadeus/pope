@@ -86,8 +86,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("example.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("example.calculator", "^1.0.0"))
                 .put(
                     "buildPath",
                     JSONArray().put(JSONObject().put("type", "source").put("path", "src")),
@@ -139,9 +139,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject()
                         .put("example.calculator", "^1.0.0")
                         .put("example.greeter", "^2.0.0"),
@@ -175,8 +175,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject())
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject())
                 .put(
                     "buildPath",
                     JSONArray().put(JSONObject().put("type", "source").put("path", "src")),
@@ -190,7 +190,7 @@ class PopePluginFunctionalTest {
             "Expected popeInstall to report the auto-picked version, got:\n${installResult.output}",
         )
 
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         assertTrue(
             dependencies.getString("example.calculator") == "^1.0.0",
             "Expected dependencies to contain the added package, got: $dependencies",
@@ -222,8 +222,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("example.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("example.calculator", "^1.0.0"))
                 .put(
                     "buildPath",
                     JSONArray().put(JSONObject().put("type", "source").put("path", "src")),
@@ -242,7 +242,7 @@ class PopePluginFunctionalTest {
             "Expected a version-conflict failure, got:\n${installResult.output}",
         )
 
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         assertTrue(
             !dependencies.has("example.greeter"),
             "Expected example.greeter to NOT be written to dependencies after a failed install, got: $dependencies",
@@ -296,8 +296,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "merge-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.merge")
-                .put("dependencies", JSONObject().put("z.something", "^1.0.0"))
+                .put("pope_package_name", "example.merge")
+                .put("pope_dependencies", JSONObject().put("z.something", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -394,8 +394,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "projectroot-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("example.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("example.calculator", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -457,8 +457,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "$folderName-project")
                 .put("version", version)
-                .put("package_name", packageName)
-                .put("dependencies", JSONObject())
+                .put("pope_package_name", packageName)
+                .put("pope_dependencies", JSONObject())
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -483,9 +483,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "calculator-repo-project")
                 .put("version", "1.0.0")
-                .put("package_name", "calculator")
+                .put("pope_package_name", "calculator")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put(
                         "greeter",
                         JSONObject().put("repoUrl", greeterRepo.absolutePath.replace("\\", "/")).put("ref", "v1.0.1"),
@@ -548,8 +548,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "nested-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("ba.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("ba.calculator", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -632,8 +632,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "explicit-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("registry-ba/calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("registry-ba/calculator", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -697,7 +697,7 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "typo-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .toString(2),
         )
 
@@ -753,7 +753,7 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "bare-none-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .toString(2),
         )
 
@@ -807,7 +807,7 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "bare-one-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .toString(2),
         )
 
@@ -818,7 +818,7 @@ class PopePluginFunctionalTest {
             "Expected the bare name to resolve to exactly one registry and be written under its " +
                 "explicit registryName/localName form, got:\n${installResult.output}",
         )
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         assertTrue(
             dependencies.has("registry-ba/calculator") && !dependencies.has("calculator"),
             "Expected the manifest's dependency key to be the explicit form, not the bare name, got: $dependencies",
@@ -877,7 +877,7 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "bare-two-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .toString(2),
         )
 
@@ -886,7 +886,7 @@ class PopePluginFunctionalTest {
         // two real candidates, the practical limit of what TestKit can exercise for this prompt.
         val installResult = run(projectDir, "popeInstall", "-PpopeAdd=calculator")
 
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         val chosenKey = setOf("registry-ba/calculator", "cw/calculator").singleOrNull { dependencies.has(it) }
         assertTrue(
             chosenKey != null,
@@ -934,7 +934,7 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "bare-typo-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .toString(2),
         )
 
@@ -1007,9 +1007,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "shared-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1071,9 +1071,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "shared-uninstall-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1141,9 +1141,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "shared-upgrade-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1159,8 +1159,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "calculator-repo-project")
                 .put("version", "1.0.1")
-                .put("package_name", "calculator")
-                .put("dependencies", JSONObject())
+                .put("pope_package_name", "calculator")
+                .put("pope_dependencies", JSONObject())
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2),
         )
@@ -1173,9 +1173,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "shared-upgrade-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.1").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1235,16 +1235,16 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "shared-prune-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", dependencies)
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", dependencies)
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                 .toString(2)
 
-        // Only patches "dependencies" on the manifest already on disk - real usage never touches
+        // Only patches "pope_dependencies" on the manifest already on disk - real usage never touches
         // buildPath directly, and popeInstall's own pope_packages entries must survive untouched.
         fun setDependencies(dependencies: JSONObject) {
             val manifestFile = projectDir.resolve("openedge-project.json")
-            val json = JSONObject(manifestFile.readText()).put("dependencies", dependencies)
+            val json = JSONObject(manifestFile.readText()).put("pope_dependencies", dependencies)
             manifestFile.writeText(json.toString(2))
         }
 
@@ -1294,8 +1294,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject())
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject())
                 .put(
                     "buildPath",
                     JSONArray()
@@ -1335,8 +1335,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "hastests-package")
                 .put("version", "1.0.0")
-                .put("package_name", "example.hastests")
-                .put("dependencies", JSONObject())
+                .put("pope_package_name", "example.hastests")
+                .put("pope_dependencies", JSONObject())
                 .put(
                     "buildPath",
                     JSONArray()
@@ -1350,8 +1350,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("example.hastests", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("example.hastests", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
         val projectDir = buildProject(registryDir, manifest)
 
@@ -1378,7 +1378,7 @@ class PopePluginFunctionalTest {
         val dependencies = JSONObject()
         dependencyNames.forEach { dependencies.put(it, "^1.0.0") }
 
-        // Only touches "dependencies" - a fresh manifest the first time
+        // Only touches "pope_dependencies" - a fresh manifest the first time
         // (file doesn't exist yet), an in-place edit after popeInstall has
         // already run once (must preserve the buildPath entries it wrote).
         val json =
@@ -1388,10 +1388,10 @@ class PopePluginFunctionalTest {
                 JSONObject()
                     .put("name", "consumer-app-fixture")
                     .put("version", "1.0.0")
-                    .put("package_name", "example.consumer")
+                    .put("pope_package_name", "example.consumer")
                     .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
             }
-        json.put("dependencies", dependencies)
+        json.put("pope_dependencies", dependencies)
         manifestFile.writeText(json.toString(2))
     }
 
@@ -1406,8 +1406,8 @@ class PopePluginFunctionalTest {
                 JSONObject()
                     .put("name", "$name-package")
                     .put("version", "1.0.0")
-                    .put("package_name", "example.$name")
-                    .put("dependencies", JSONObject())
+                    .put("pope_package_name", "example.$name")
+                    .put("pope_dependencies", JSONObject())
                     .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                     .toString(2),
             )
@@ -1480,8 +1480,8 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "consumer-app-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
-                .put("dependencies", JSONObject().put("example.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.consumer")
+                .put("pope_dependencies", JSONObject().put("example.calculator", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
         val projectDir = buildProject(registryDir, manifest)
 
@@ -1506,8 +1506,8 @@ class PopePluginFunctionalTest {
                 JSONObject()
                     .put("name", "$name-package")
                     .put("version", "1.0.0")
-                    .put("package_name", "example.$name")
-                    .put("dependencies", JSONObject())
+                    .put("pope_package_name", "example.$name")
+                    .put("pope_dependencies", JSONObject())
                     .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
                     .toString(2),
             )
@@ -1545,7 +1545,7 @@ class PopePluginFunctionalTest {
             "Expected a summary naming example.beta, got:\n${uninstallResult.output}",
         )
         assertTrue(
-            !JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies").has("example.beta"),
+            !JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies").has("example.beta"),
             "Expected example.beta removed from dependencies",
         )
         assertTrue(
@@ -1562,7 +1562,7 @@ class PopePluginFunctionalTest {
         )
 
         assertTrue(
-            JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies").has("example.alpha"),
+            JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies").has("example.alpha"),
             "Expected example.alpha (not uninstalled) to be left alone in dependencies",
         )
         assertTrue(
@@ -1614,7 +1614,7 @@ class PopePluginFunctionalTest {
             "Expected a did-you-mean suggestion naming the close declared dependency, got:\n${result.output}",
         )
         assertTrue(
-            JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies").has("example.beta"),
+            JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies").has("example.beta"),
             "Expected the declined/non-interactive suggestion to leave dependencies untouched",
         )
     }
@@ -1657,9 +1657,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "uninstall-bare-one-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1673,7 +1673,7 @@ class PopePluginFunctionalTest {
             uninstallResult.output.contains("removed \"registry-ba/calculator\""),
             "Expected the bare name to resolve to the one matching declared key, got:\n${uninstallResult.output}",
         )
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         assertTrue(
             !dependencies.has("registry-ba/calculator") && dependencies.has("registry-ba/logger"),
             "Expected only calculator removed, logger left alone, got: $dependencies",
@@ -1731,9 +1731,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "uninstall-bare-two-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("cw/calculator", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
@@ -1746,7 +1746,7 @@ class PopePluginFunctionalTest {
         // the first offered option - same practical limit as the install-side disambiguation test.
         val uninstallResult = run(projectDir, "popeUninstall", "-PpopeUninstall=calculator")
 
-        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("dependencies")
+        val dependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("pope_dependencies")
         val removedKey = setOf("registry-ba/calculator", "cw/calculator").singleOrNull { !dependencies.has(it) }
         assertTrue(
             removedKey != null,
@@ -1767,9 +1767,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "calculator-repo-project")
                 .put("version", "1.0.0")
-                .put("package_name", "calculator")
+                .put("pope_package_name", "calculator")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put(
                         "greeter",
                         JSONObject().put("repoUrl", greeterRepo.absolutePath.replace("\\", "/")).put("ref", "v1.0.0"),
@@ -1815,9 +1815,9 @@ class PopePluginFunctionalTest {
             JSONObject()
                 .put("name", "uninstall-trust-fixture")
                 .put("version", "1.0.0")
-                .put("package_name", "example.consumer")
+                .put("pope_package_name", "example.consumer")
                 .put(
-                    "dependencies",
+                    "pope_dependencies",
                     JSONObject().put("registry-ba/calculator", "^1.0.0").put("registry-ba/logger", "^1.0.0"),
                 )
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))

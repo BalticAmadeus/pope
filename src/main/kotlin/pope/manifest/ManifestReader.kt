@@ -21,14 +21,14 @@ object ManifestReader {
         val testRoots = rootsOfType("test")
 
         val packageName =
-            if (json.has("package_name")) {
-                json.getString("package_name")
+            if (json.has("pope_package_name")) {
+                json.getString("pope_package_name")
             } else {
                 inferAndPersistPackageName(file, json, sourceRoots)
             }
 
         val dependencies =
-            json.optJSONObject("dependencies")?.let { deps ->
+            json.optJSONObject("pope_dependencies")?.let { deps ->
                 deps.keySet().associateWith { key -> parseDependencySpec(key, deps.get(key), file) }
             } ?: emptyMap()
 
@@ -74,7 +74,7 @@ object ManifestReader {
 
         val inferred = PackageNameInferrer.infer(File(file.parentFile, packageRoot))
 
-        json.put("package_name", inferred)
+        json.put("pope_package_name", inferred)
         ManifestWriter.write(file, json)
 
         return inferred

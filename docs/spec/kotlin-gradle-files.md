@@ -120,8 +120,8 @@ need — how the pieces fit together, not what each file contains.
   `cacheDir`, and the `registries {}` container.
 - **`manifest/`** — reads and writes `openedge-project.json`
   (`ManifestReader` / `ManifestWriter` / `Manifest`), infers a missing
-  `package_name` from `.cls` files (`PackageNameInferrer`), and patches
-  `dependencies` / `buildPath` (`DependenciesUpdater`, `BuildPathUpdater`).
+  `pope_package_name` from `.cls` files (`PackageNameInferrer`), and patches
+  `pope_dependencies` / `buildPath` (`DependenciesUpdater`, `BuildPathUpdater`).
 - **`registry/`** — given a package name + caret range, finds the package.
   `PrefixRoutingRegistry` routes by longest matching prefix to a
   `CatalogRegistry` (a git catalog repo of reference files) or the
@@ -202,7 +202,7 @@ happens:
       root (`pope_packages/registry-ba/`), and every direct-source
       dependency shares one `pope_packages/dependencies/` root, regardless
       of which registry (if any) declared it. A package's own source root
-      already mirrors its real `package_name` as nested folders (a hard
+      already mirrors its real `pope_package_name` as nested folders (a hard
       ABL/PROPATH requirement), so no further per-package subfolder is
       needed — `org/package` nesting comes for free from the package's own
       content. Because multiple packages can share one root, install only
