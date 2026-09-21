@@ -29,8 +29,8 @@ class DependencyResolverTest {
             {
               "name": "$packageName-project",
               "version": "$version",
-              "package_name": "$packageName",
-              "dependencies": { $depsJson },
+              "pope_package_name": "$packageName",
+              "pope_dependencies": { $depsJson },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -46,8 +46,8 @@ class DependencyResolverTest {
             {
               "name": "$packageName-project",
               "version": "$version",
-              "package_name": "$packageName",
-              "dependencies": { $rawDependenciesJson },
+              "pope_package_name": "$packageName",
+              "pope_dependencies": { $rawDependenciesJson },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -154,8 +154,8 @@ class DependencyResolverTest {
             {
               "name": "$folderName-project",
               "version": "$version",
-              "package_name": "$packageName",
-              "dependencies": {},
+              "pope_package_name": "$packageName",
+              "pope_dependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),

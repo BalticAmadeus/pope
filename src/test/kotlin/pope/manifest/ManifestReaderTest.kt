@@ -52,7 +52,7 @@ class ManifestReaderTest {
 
         assertEquals("example.closer", manifest.packageName)
         assertTrue(
-            file.readText().contains("\"package_name\": \"example.closer\""),
+            file.readText().contains("\"pope_package_name\": \"example.closer\""),
             "Expected the inferred package_name to be written back to the manifest file on disk",
         )
     }
@@ -86,8 +86,8 @@ class ManifestReaderTest {
               "name": "consumer-app",
               "version": "1.0.0",
               "oeversion": "12.8",
-              "package_name": "example.consumer",
-              "dependencies": { "example.calculator": "^1.0.0" },
+              "pope_package_name": "example.consumer",
+              "pope_dependencies": { "example.calculator": "^1.0.0" },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -110,7 +110,7 @@ class ManifestReaderTest {
             {
               "name": "consumer-app",
               "version": "1.0.0",
-              "package_name": "example.consumer",
+              "pope_package_name": "example.consumer",
               "buildPath": [
                 { "type": "source", "path": "src" },
                 { "type": "other", "path": "ignored" },
@@ -133,7 +133,7 @@ class ManifestReaderTest {
             {
               "name": "consumer-app",
               "version": "1.0.0",
-              "package_name": "example.consumer",
+              "pope_package_name": "example.consumer",
               "buildPath": [
                 { "type": "source", "path": "src" },
                 { "type": "test", "path": "test" },
@@ -158,8 +158,8 @@ class ManifestReaderTest {
             {
               "name": "calculator-package",
               "version": "1.0.0",
-              "package_name": "calculator",
-              "dependencies": { "greeter": { "repoUrl": "https://example.com/greeter.git", "ref": "v1.0.1" } },
+              "pope_package_name": "calculator",
+              "pope_dependencies": { "greeter": { "repoUrl": "https://example.com/greeter.git", "ref": "v1.0.1" } },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -181,8 +181,8 @@ class ManifestReaderTest {
             {
               "name": "calculator-package",
               "version": "1.0.0",
-              "package_name": "calculator",
-              "dependencies": { "greeter": { "ref": "v1.0.1" } },
+              "pope_package_name": "calculator",
+              "pope_dependencies": { "greeter": { "ref": "v1.0.1" } },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -201,8 +201,8 @@ class ManifestReaderTest {
             {
               "name": "calculator-package",
               "version": "1.0.0",
-              "package_name": "calculator",
-              "dependencies": { "greeter": 42 },
+              "pope_package_name": "calculator",
+              "pope_dependencies": { "greeter": 42 },
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),

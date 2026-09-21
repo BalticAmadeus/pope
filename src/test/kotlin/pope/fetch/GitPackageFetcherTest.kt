@@ -20,8 +20,8 @@ class GitPackageFetcherTest {
             {
               "name": "$folderName-project",
               "version": "$version",
-              "package_name": "$packageName",
-              "dependencies": {},
+              "pope_package_name": "$packageName",
+              "pope_dependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),
@@ -70,8 +70,8 @@ class GitPackageFetcherTest {
             {
               "name": "greeter-repo-project",
               "version": "1.0.2",
-              "package_name": "greeter",
-              "dependencies": {},
+              "pope_package_name": "greeter",
+              "pope_dependencies": {},
               "buildPath": [{ "type": "source", "path": "src" }]
             }
             """.trimIndent(),

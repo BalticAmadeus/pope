@@ -27,13 +27,13 @@ class ManifestWriterTest {
                 .put("buildPath", JSONArray())
                 .put("oeversion", "12.8")
                 .put("version", "1.0.0")
-                .put("dependencies", JSONObject())
+                .put("pope_dependencies", JSONObject())
                 .put("name", "customer-app")
-                .put("package_name", "example.customer")
+                .put("pope_package_name", "example.customer")
 
         ManifestWriter.write(file, json)
 
-        assertKeyOrder(file.readText(), "name", "version", "oeversion", "package_name", "dependencies", "buildPath")
+        assertKeyOrder(file.readText(), "name", "version", "oeversion", "pope_package_name", "pope_dependencies", "buildPath")
     }
 
     @Test
@@ -57,8 +57,8 @@ class ManifestWriterTest {
             JSONObject()
                 .put("name", "customer-app")
                 .put("version", "1.0.0")
-                .put("package_name", "example.customer")
-                .put("dependencies", JSONObject().put("example.calculator", "^1.0.0"))
+                .put("pope_package_name", "example.customer")
+                .put("pope_dependencies", JSONObject().put("example.calculator", "^1.0.0"))
                 .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
 
         ManifestWriter.write(file, json)
@@ -67,7 +67,7 @@ class ManifestWriterTest {
         kotlin.test.assertEquals("customer-app", reparsed.getString("name"))
         kotlin.test.assertEquals(
             "^1.0.0",
-            reparsed.getJSONObject("dependencies").getString("example.calculator"),
+            reparsed.getJSONObject("pope_dependencies").getString("example.calculator"),
         )
         kotlin.test.assertEquals("src", reparsed.getJSONArray("buildPath").getJSONObject(0).getString("path"))
     }
