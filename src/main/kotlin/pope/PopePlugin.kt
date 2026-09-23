@@ -8,6 +8,7 @@ import pope.manifest.BuildPathUpdater
 import pope.manifest.DependenciesUpdater
 import pope.manifest.DependencySpec
 import pope.manifest.ManifestReader
+import pope.manifest.PackageNameInferrer
 import pope.propath.PropathGenerator
 import pope.registry.CatalogRegistry
 import pope.registry.InstallLayout
@@ -351,6 +352,98 @@ class PopePlugin : Plugin<Project> {
                 projectRoot.resolve("pope.lock").writeText(lockJson.toString(2))
 
                 project.logger.lifecycle("  removed \"$packageName\"")
+            }
+        }
+
+        project.tasks.register("popeInit") { task ->
+            task.group = "pope"
+            task.description =
+                "Finishes setting up a new project once pope is already applied by coordinate: " +
+                "generates or patches openedge-project.json, adds .gitignore entries, and copies the " +
+                "per-project pope/pope.bat CLI. Pass -PpopePackageName=<name> if it can't be inferred " +
+                "from .cls files."
+            task.doLast {
+                project.logger.lifecycle("=== pope init ===")
+                project.logger.lifecycle("")
+
+                val projectRoot = extension.projectRoot.get().asFile
+                val explicitPackageName = project.findProperty("popePackageName") as String?
+
+                // Bundled inside the plugin jar (see src/main/resources/pope/scaffold/) rather than
+                // read off a filesystem path - unlike scaffoldProject in pope's own build.gradle.kts,
+                // this task runs from a downloaded plugin with no repo checkout alongside it.
+                fun scaffoldResource(name: String): String =
+                    checkNotNull(javaClass.getResourceAsStream("/pope/scaffold/$name")) {
+                        "Bundled resource pope/scaffold/$name is missing from the plugin jar"
+                    }.bufferedReader().readText()
+
+                val popeScript = File(projectRoot, "pope")
+                popeScript.writeText(scaffoldResource("pope"))
+                popeScript.setExecutable(true)
+                File(projectRoot, "pope.bat").writeText(scaffoldResource("pope.bat"))
+
+                val manifestFile = File(projectRoot, "openedge-project.json")
+                if (!manifestFile.exists()) {
+                    val packageName =
+                        explicitPackageName ?: PackageNameInferrer.infer(File(projectRoot, "src"))
+                    val rendered =
+                        scaffoldResource("openedge-project.json.template")
+                            .replace("{{PROJECT_NAME}}", project.name)
+                            .replace("{{PACKAGE_NAME}}", packageName)
+                    manifestFile.writeText(rendered)
+                    project.logger.lifecycle("  + generated openedge-project.json (popePackageName: \"$packageName\")")
+                } else {
+                    val json = JSONObject(manifestFile.readText())
+                    var patched = false
+
+                    if (!json.has("popeDependencies")) {
+                        json.put("popeDependencies", JSONObject())
+                        patched = true
+                    }
+                    if (!json.has("popePackageName")) {
+                        val sourceRoot =
+                            json.optJSONArray("buildPath")?.let { entries ->
+                                (0 until entries.length())
+                                    .map { entries.getJSONObject(it) }
+                                    .firstOrNull { it.optString("type") == "source" }
+                                    ?.optString("path")
+                            } ?: "src"
+                        val packageName = explicitPackageName ?: PackageNameInferrer.infer(File(projectRoot, sourceRoot))
+                        json.put("popePackageName", packageName)
+                        project.logger.lifecycle("  + added popePackageName: \"$packageName\" to openedge-project.json")
+                        patched = true
+                    }
+
+                    if (patched) {
+                        manifestFile.writeText(json.toString(2))
+                    } else {
+                        project.logger.lifecycle("  openedge-project.json already has everything pope needs - left untouched")
+                    }
+                }
+
+                val gitignoreFile = File(projectRoot, ".gitignore")
+                val gitignoreEntries = listOf("pope_packages/", ".gradle/")
+                val existingGitignoreLines =
+                    if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()
+                val missingGitignoreEntries = gitignoreEntries.filter { it !in existingGitignoreLines }
+                if (missingGitignoreEntries.isNotEmpty()) {
+                    if (!gitignoreFile.exists()) {
+                        gitignoreFile.writeText(missingGitignoreEntries.joinToString("\n", postfix = "\n"))
+                        project.logger.lifecycle("  + generated .gitignore (${missingGitignoreEntries.joinToString(", ")})")
+                    } else {
+                        val needsLeadingNewline =
+                            gitignoreFile.length() > 0 && !gitignoreFile.readText().endsWith("\n")
+                        gitignoreFile.appendText(
+                            (if (needsLeadingNewline) "\n" else "") + missingGitignoreEntries.joinToString("\n", postfix = "\n"),
+                        )
+                        project.logger.lifecycle("  + added ${missingGitignoreEntries.joinToString(", ")} to .gitignore")
+                    }
+                }
+
+                project.logger.lifecycle("")
+                project.logger.lifecycle("pope wiring is set up at ${projectRoot.path}")
+                project.logger.lifecycle("  - add a registry: pope registry add <prefix> <url> (writes pope-registries.properties)")
+                project.logger.lifecycle("  - pope install <package_name>")
             }
         }
 

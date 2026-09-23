@@ -24,7 +24,10 @@ plugins {
 }
 
 group = "io.github.balticamadeus"
-version = "0.1.0-SNAPSHOT"
+// Overridable so CI can set the real released version from a pushed
+// tag (-PpopeVersion=x.y.z) without touching this file - local dev
+// keeps resolving to the snapshot by default.
+version = (findProperty("popeVersion") as String?) ?: "0.1.0-SNAPSHOT"
 
 // java-gradle-plugin + maven-publish together auto-register a
 // "pluginMaven" publication (the plugin's own jar/pom) plus a marker
@@ -32,10 +35,12 @@ version = "0.1.0-SNAPSHOT"
 // resolve by plugin id instead of group:artifact coordinates) - no
 // publications{} block needed here.
 //
-// Where popePublishRepoUrl actually points is deliberately not decided
-// here - default is a local, disposable folder so `./gradlew publish`
-// works out of the box for testing. Real target: a git-repo-hosted Maven
-// repo (see ADR-0008), once actually set up.
+// popePublishRepoUrl defaults to a local, disposable folder so
+// `./gradlew publish` works out of the box for testing. The real
+// release path (see .github/workflows/publish.yml) passes it a local
+// checkout of the `maven-repo` branch, which CI then commits and
+// pushes - that branch, served via GitHub Pages, is the actual
+// git-repo-hosted Maven repo decided in ADR-0008.
 publishing {
     repositories {
         maven {
@@ -159,7 +164,7 @@ tasks.register("scaffoldProject") {
                 }
                 ?: emptyList()
 
-        // Gradle's own build wiring (wrapper, settings/build/gradle.properties)
+        // Gradle's own build wiring (wrapper, settings/build.gradle.kts)
         // goes into a .pope/ subfolder for a genuinely fresh project, so the
         // project root only shows genuinely project-relevant files
         // (openedge-project.json, pope-registries.properties, pope/pope.bat,
@@ -167,7 +172,10 @@ tasks.register("scaffoldProject") {
         // project (root-level Gradle files already present - including the
         // real openedge-package-manager demo repo, which predates this) is
         // left exactly as-is: re-running this against it keeps writing to
-        // the root, never creates a second, conflicting .pope/ copy.
+        // the root, never creates a second, conflicting .pope/ copy. A
+        // pre-existing gradle.properties (for unrelated Gradle settings) is
+        // still treated as a legacy-layout signal even though pope itself
+        // no longer writes one.
         val legacyLayout =
             File(targetDir, "settings.gradle.kts").exists() ||
                 File(targetDir, "build.gradle.kts").exists() ||
@@ -187,12 +195,6 @@ tasks.register("scaffoldProject") {
         File(targetDir, "pope").setExecutable(true)
         rootDir.resolve("pope.bat").copyTo(File(targetDir, "pope.bat"), overwrite = true)
 
-        // Real relative path from gradleFilesDir back to this pope
-        // clone - computed from where the two actually are, not a guessed
-        // default.
-        val popeToolPath =
-            gradleFilesDir.toPath().relativize(rootDir.toPath()).toString().replace('\\', '/')
-
         fun renderTemplate(templateName: String, replacements: Map<String, String>): String {
             var text = rootDir.resolve("scaffold/templates/$templateName").readText()
             replacements.forEach { (token, value) -> text = text.replace("{{$token}}", value) }
@@ -200,31 +202,21 @@ tasks.register("scaffoldProject") {
         }
 
         // Gradle config: only written if genuinely missing - never
-        // overwrite/patch an existing settings.gradle.kts/build.gradle.kts/
-        // gradle.properties (arbitrary existing content, not safe to
-        // pattern-match).
+        // overwrite/patch an existing settings.gradle.kts/build.gradle.kts
+        // (arbitrary existing content, not safe to pattern-match).
         val settingsFile = File(gradleFilesDir, "settings.gradle.kts")
         if (!settingsFile.exists()) {
             settingsFile.writeText(
                 renderTemplate(
                     "settings.gradle.kts.template",
-                    mapOf("POPE_TOOL_PATH" to popeToolPath, "ROOT_PROJECT_NAME" to rootProjectName),
+                    mapOf("ROOT_PROJECT_NAME" to rootProjectName),
                 ),
             )
         } else {
-            logger.warn("  ${settingsFile.path} already exists - left untouched. Needs: includeBuild(\"$popeToolPath\")")
-        }
-
-        // gradle.properties holds popeToolPath - machine-specific (wherever *this*
-        // developer cloned pope, relative to this project), so it's only ever
-        // written fresh, never committed for someone else to inherit a
-        // possibly-wrong value - see the .gitignore entry below.
-        val propertiesFile = File(gradleFilesDir, "gradle.properties")
-        val gradlePropertiesFreshlyGenerated = !propertiesFile.exists()
-        if (gradlePropertiesFreshlyGenerated) {
-            propertiesFile.writeText(renderTemplate("gradle.properties.template", mapOf("POPE_TOOL_PATH" to popeToolPath)))
-        } else {
-            logger.warn("  ${propertiesFile.path} already exists - left untouched. Needs: popeToolPath=$popeToolPath")
+            logger.warn(
+                "  ${settingsFile.path} already exists - left untouched. Needs a pluginManagement{} repositories{} " +
+                    "block pointing at https://balticamadeus.github.io/pope/",
+            )
         }
 
         val buildFile = File(gradleFilesDir, "build.gradle.kts")
@@ -234,9 +226,17 @@ tasks.register("scaffoldProject") {
             // project directory already equal to the ABL project root, so
             // the default (unset) behavior is correct there.
             val projectRootBlock = if (legacyLayout) "" else "\n    projectRoot.set(file(\"..\"))"
-            buildFile.writeText(renderTemplate("build.gradle.kts.template", mapOf("PROJECT_ROOT_BLOCK" to projectRootBlock)))
+            buildFile.writeText(
+                renderTemplate(
+                    "build.gradle.kts.template",
+                    mapOf("PROJECT_ROOT_BLOCK" to projectRootBlock, "POPE_VERSION" to project.version.toString()),
+                ),
+            )
         } else {
-            logger.warn("  ${buildFile.path} already exists - left untouched. Needs id(\"io.github.balticamadeus.pope\") applied.")
+            logger.warn(
+                "  ${buildFile.path} already exists - left untouched. Needs " +
+                    "id(\"io.github.balticamadeus.pope\") version \"${project.version}\" applied.",
+            )
         }
 
         // Registries live in pope-registries.properties, independent of
@@ -336,17 +336,7 @@ tasks.register("scaffoldProject") {
         // in source control. Non-destructive: only appends whichever entry isn't
         // already present anywhere in an existing file, never overwrites it.
         val gradleCacheEntry = if (legacyLayout) ".gradle/" else ".pope/.gradle/"
-        val gradlePropertiesEntry = if (legacyLayout) "gradle.properties" else ".pope/gradle.properties"
-        val gitignoreEntries =
-            listOfNotNull(
-                "pope_packages/",
-                gradleCacheEntry,
-                // Only ignore it when pope generated it fresh this run - an
-                // already-existing (and presumably intentionally committed)
-                // gradle.properties from before this fix is left as the
-                // project's own call, not silently reinterpreted here.
-                gradlePropertiesEntry.takeIf { gradlePropertiesFreshlyGenerated },
-            )
+        val gitignoreEntries = listOf("pope_packages/", gradleCacheEntry)
         val gitignoreFile = File(targetDir, ".gitignore")
         val existingGitignoreLines =
             if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()

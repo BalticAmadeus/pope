@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Thin syntax wrapper around the popeInstall/popePropath Gradle tasks.
+# Not a standalone CLI: it locates gradlew relative to itself and forwards
+# to whatever Gradle project it's run from, which must already apply the
+# pope plugin (id("io.github.erudys27.pope")) - see README.md.
+set -e
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Two layouts a scaffolded project can be in: Gradle's own files tucked
+# into .pope/ (new projects), or at this same root (legacy - e.g. the
+# real openedge-package-manager demo repo, which predates the .pope/
+# layout). Detected automatically so this one script works for both,
+# with no migration needed for existing projects.
+if [ -f "$DIR/.pope/gradlew" ]; then
+    GRADLEW="$DIR/.pope/gradlew"
+    PROJECT_DIR_ARGS=(-p "$DIR/.pope")
+else
+    GRADLEW="$DIR/gradlew"
+    PROJECT_DIR_ARGS=()
+fi
+
+usage() {
+    echo "Usage:"
+    echo "  pope install                          resolve declared dependencies"
+    echo "  pope install <package>[:<versionSpec>] add + resolve a dependency in one step"
+    echo "  pope uninstall <package>               remove a dependency and clean up its files"
+    echo "  pope propath [--tests]                 print the generated PROPATH"
+    echo "                                          (--tests also includes buildPath's \"test\" entries)"
+    echo "  pope registry add [<prefix> <url> [<name>]]  add a registry to pope-registries.properties"
+    echo "                                          (interactive if prefix/url are omitted)"
+    echo "  pope prune [--dry-run]                 remove pope_packages/ entries no longer part of"
+    echo "                                          the resolved dependency graph"
+    exit 1
+}
+
+[ "$#" -ge 1 ] || usage
+
+command="$1"
+shift
+
+case "$command" in
+    install)
+        if [ "$#" -eq 0 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeInstall
+        elif [ "$#" -eq 1 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeInstall "-PpopeAdd=$1"
+        else
+            usage
+        fi
+        ;;
+    uninstall)
+        if [ "$#" -eq 1 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeUninstall "-PpopeUninstall=$1"
+        else
+            usage
+        fi
+        ;;
+    propath)
+        if [ "$#" -eq 0 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePropath
+        elif [ "$#" -eq 1 ] && [ "$1" = "--tests" ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePropath -PpopeIncludeTests
+        else
+            usage
+        fi
+        ;;
+    registry)
+        [ "${1:-}" = "add" ] || usage
+        shift
+        if [ "$#" -eq 0 ]; then
+            read -r -p "Registry prefix (e.g. ba.): " prefix
+            [ -n "$prefix" ] || { echo "Registry prefix is required."; exit 1; }
+            read -r -p "Catalog URL: " url
+            [ -n "$url" ] || { echo "Catalog URL is required."; exit 1; }
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$prefix" "-PcatalogUrl=$url"
+        elif [ "$#" -eq 2 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2"
+        elif [ "$#" -eq 3 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeRegistryAdd "-PregistryPrefix=$1" "-PcatalogUrl=$2" "-PregistryName=$3"
+        else
+            usage
+        fi
+        ;;
+    prune)
+        if [ "$#" -eq 0 ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePrune
+        elif [ "$#" -eq 1 ] && [ "$1" = "--dry-run" ]; then
+            "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popePrune -PpopeDryRun
+        else
+            usage
+        fi
+        ;;
+    *)
+        usage
+        ;;
+esac
