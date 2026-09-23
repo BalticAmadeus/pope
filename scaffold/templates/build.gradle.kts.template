@@ -1,5 +1,5 @@
 plugins {
-    id("io.github.balticamadeus.pope")
+    id("io.github.balticamadeus.pope") version "{{POPE_VERSION}}"
 }
 
 pope {{{PROJECT_ROOT_BLOCK}}

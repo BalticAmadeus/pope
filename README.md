@@ -57,18 +57,24 @@ the team before treating as settled.
 
 ## Per-machine setup
 
-1. **Clone this repo.**
-2. **Wire up your ABL project** - from your project's own directory:
+No clone needed - pope is resolved by version from its published Maven
+repo (`https://balticamadeus.github.io/pope/`), the same way any other
+Gradle plugin is.
+
+1. **Wire up your ABL project** - download `pope-init` (`pope-init.bat`
+   on Windows) once, from
+   [github.com/BalticAmadeus/pope](https://github.com/BalticAmadeus/pope),
+   and run it from your project's own directory:
    ```
-   /path/to/pope/pope-init      # pope-init.bat on Windows
+   ./pope-init <version>      # e.g. ./pope-init 1.2.0
    ```
-   You only need the full path the *first* time. It prompts for
-   registries, scaffolds/patches your project non-destructively (safe to
-   re-run), and offers to install the global CLI (step 3) - once that's
-   done, bare `pope-init` works from anywhere, for this or any future
-   project. See `HANDOVER.md` and `docs/spec/kotlin-gradle-files.md` for
-   what it actually does.
-3. **(Optional) Install the global CLI**, so `pope install`/`uninstall`/
+   It writes the Gradle wrapper, `settings.gradle.kts`, and
+   `build.gradle.kts` (pointed at the published plugin), then lets
+   Gradle finish the rest: generating/patching `openedge-project.json`,
+   prompting for registries, and offering to install the global CLI
+   (step 2). Safe to re-run. See `HANDOVER.md` and
+   `docs/spec/kotlin-gradle-files.md` for what it actually does.
+2. **(Optional) Install the global CLI**, so `pope install`/`uninstall`/
    `propath`/`prune`/`registry add` work from any project without a
    `./`/`.\` prefix - `pope-init` offers to do this for you, or run it
    directly:

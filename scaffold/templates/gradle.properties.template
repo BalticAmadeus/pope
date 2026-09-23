@@ -1,4 +1,0 @@
-# Where the pope plugin's source lives, for includeBuild during local dev.
-# Computed relative to wherever pope was actually cloned when this
-# project was scaffolded. Override if you move either clone.
-popeToolPath={{POPE_TOOL_PATH}}

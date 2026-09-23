@@ -1,21 +1,32 @@
 @echo off
 setlocal enabledelayedexpansion
 
-rem Interactively adds pope wiring to the current directory (your project -
-rem new or existing). Run this FROM your project's own directory, pointing
-rem at wherever you cloned pope:
-rem   \path\to\pope\pope-init.bat
-rem Prompts for registries, then delegates to pope's own scaffoldProject
-rem Gradle task (see build.gradle.kts) to actually write/patch files.
+rem Bootstraps pope into the CURRENT directory (your project - new or
+rem existing), with NO local clone of pope needed: this script is meant
+rem to be downloaded once (e.g. via Invoke-WebRequest from GitHub) and
+rem run from inside your project. It writes just enough to resolve pope
+rem from its published Maven repo (https://balticamadeus.github.io/pope/)
+rem - the Gradle wrapper, settings.gradle.kts, build.gradle.kts - then
+rem lets Gradle pull the plugin itself and finish setup via the popeInit
+rem task (which does what this script can't: read pope's own code to
+rem infer package_name, etc.). See docs/decisions/0008-plugin-publishing-v1.md.
 
-set TOOL_DIR=%~dp0
-if %TOOL_DIR:~-1%==\ set TOOL_DIR=%TOOL_DIR:~0,-1%
-set TARGET_DIR=%CD%
-set REGISTRIES=
+set "POPE_REPO_RAW=https://raw.githubusercontent.com/BalticAmadeus/pope/main"
+set "TARGET_DIR=%CD%"
+set "REGISTRIES="
+
+set "POPE_VERSION=%~1"
+if "%POPE_VERSION%"=="" (
+    set /p POPE_VERSION="pope version to use (see https://github.com/BalticAmadeus/pope/releases): "
+    if "!POPE_VERSION!"=="" (
+        echo A version is required.
+        exit /b 1
+    )
+)
 
 :registry_loop
 set /p PREFIX="Registry prefix (e.g. ba), or leave blank to stop adding registries: "
-if "%PREFIX%"=="" goto scaffold
+if "%PREFIX%"=="" goto fetch_wrapper
 
 set /p URL="Catalog URL for %PREFIX%: "
 if "%URL%"=="" (
@@ -33,50 +44,101 @@ if "%REGISTRIES%"=="" (
 set /p AGAIN="Add another registry? [yes/no]: "
 if /I "%AGAIN%"=="y" goto registry_loop
 if /I "%AGAIN%"=="yes" goto registry_loop
-if /I "%AGAIN%"=="n" goto scaffold
-if /I "%AGAIN%"=="no" goto scaffold
+if /I "%AGAIN%"=="n" goto fetch_wrapper
+if /I "%AGAIN%"=="no" goto fetch_wrapper
 echo Please enter 'yes' or 'no'.
 goto ask_again
 
-:scaffold
+:fetch_wrapper
+echo Fetching the Gradle wrapper...
+if not exist gradle\wrapper mkdir gradle\wrapper
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/gradlew' -OutFile 'gradlew'" || exit /b 1
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/gradlew.bat' -OutFile 'gradlew.bat'" || exit /b 1
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/gradle/wrapper/gradle-wrapper.jar' -OutFile 'gradle\wrapper\gradle-wrapper.jar'" || exit /b 1
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/gradle/wrapper/gradle-wrapper.properties' -OutFile 'gradle\wrapper\gradle-wrapper.properties'" || exit /b 1
+
+if exist settings.gradle.kts (
+    echo   settings.gradle.kts already exists - left untouched. Needs a pluginManagement{} repositories{}
+    echo   block pointing at https://balticamadeus.github.io/pope/
+    goto write_build_file
+)
+for %%I in ("%TARGET_DIR%") do set "ROOT_PROJECT_NAME=%%~nxI"
+(
+    echo pluginManagement {
+    echo     repositories {
+    echo         maven {
+    echo             url = uri("https://balticamadeus.github.io/pope/"^)
+    echo         }
+    echo         gradlePluginPortal(^)
+    echo     }
+    echo }
+    echo.
+    echo rootProject.name = "%ROOT_PROJECT_NAME%"
+) > settings.gradle.kts
+
+:write_build_file
+if exist build.gradle.kts (
+    echo   build.gradle.kts already exists - left untouched. Needs
+    echo   id("io.github.balticamadeus.pope"^) version "%POPE_VERSION%" applied.
+    goto run_pope_init
+)
+(
+    echo plugins {
+    echo     id("io.github.balticamadeus.pope"^) version "%POPE_VERSION%"
+    echo }
+) > build.gradle.kts
+
+:run_pope_init
 set OUTPUT_FILE=%TEMP%\pope-init-%RANDOM%.log
-call "%TOOL_DIR%\gradlew.bat" -p "%TOOL_DIR%" scaffoldProject -PtargetDir="%TARGET_DIR%" -Pregistries="%REGISTRIES%" > "%OUTPUT_FILE%" 2>&1
-set SCAFFOLD_RESULT=%ERRORLEVEL%
+call gradlew.bat popeInit > "%OUTPUT_FILE%" 2>&1
+set INIT_RESULT=%ERRORLEVEL%
 type "%OUTPUT_FILE%"
 
-if %SCAFFOLD_RESULT%==0 (
+if %INIT_RESULT%==0 (
     del "%OUTPUT_FILE%"
-    goto offer_global_cli
+    goto apply_registries
 )
 
-findstr /C:"PACKAGE_NAME_REQUIRED" "%OUTPUT_FILE%" >nul
+findstr /C:"Could not infer package_name" "%OUTPUT_FILE%" >nul
 if %ERRORLEVEL%==0 (
     del "%OUTPUT_FILE%"
     echo.
-    echo Couldn't automatically determine package_name for your project.
-    set /p PACKAGE_NAME="Enter package_name (e.g. example.myproject): "
+    echo Couldn't automatically determine the package name for your project.
+    set /p PACKAGE_NAME="Enter it now (e.g. example.myproject): "
     if "!PACKAGE_NAME!"=="" (
-        echo package_name is required.
+        echo A package name is required.
         exit /b 1
     )
-    call "%TOOL_DIR%\gradlew.bat" -p "%TOOL_DIR%" scaffoldProject -PtargetDir="%TARGET_DIR%" -Pregistries="%REGISTRIES%" -PpackageName="!PACKAGE_NAME!"
+    call gradlew.bat popeInit "-PpopePackageName=!PACKAGE_NAME!"
     if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    goto offer_global_cli
 ) else (
     del "%OUTPUT_FILE%"
     exit /b 1
 )
 
+:apply_registries
+if "%REGISTRIES%"=="" goto offer_global_cli
+for %%R in (%REGISTRIES:,= %) do (
+    for /f "tokens=1,2 delims==" %%A in ("%%R") do (
+        call gradlew.bat popeRegistryAdd "-PregistryPrefix=%%A" "-PcatalogUrl=%%B"
+    )
+)
+
 :offer_global_cli
+set "CLI_DIR=%USERPROFILE%\.pope\cli"
+if not exist "%CLI_DIR%" mkdir "%CLI_DIR%"
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/cli/pope.bat' -OutFile '%CLI_DIR%\pope.bat'" || exit /b 1
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%POPE_REPO_RAW%/cli/install.ps1' -OutFile '%CLI_DIR%\install.ps1'" || exit /b 1
+
 rem Already on PATH? Don't ask - just say so and move on, rather than
 rem asking a question whose answer install.ps1 would report after the fact.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%\cli\install.ps1" -Check
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CLI_DIR%\install.ps1" -Check
 if %ERRORLEVEL%==0 (
     echo (global pope CLI is already set up - "pope install" already works from any project^)
     exit /b 0
 )
 :ask_add_global_cli
-set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\pope? [yes/no]: "
+set /p ADD_GLOBAL_CLI="Add the global pope CLI to PATH, so \"pope install\" works from any project without .\gradlew? [yes/no]: "
 if /I "%ADD_GLOBAL_CLI%"=="y" goto do_add_global_cli
 if /I "%ADD_GLOBAL_CLI%"=="yes" goto do_add_global_cli
 if /I "%ADD_GLOBAL_CLI%"=="n" exit /b 0
@@ -85,5 +147,5 @@ echo Please enter 'yes' or 'no'.
 goto ask_add_global_cli
 
 :do_add_global_cli
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%\cli\install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CLI_DIR%\install.ps1"
 exit /b 0
