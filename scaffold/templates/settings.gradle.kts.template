@@ -1,23 +1,13 @@
 pluginManagement {
-    // pope isn't published anywhere reachable by coordinate yet, so this
-    // pulls the plugin straight from a separate clone of the tool repo
-    // (github.com/BalticAmadeus/pope) via a composite build. This file may
-    // live at the project root or, for projects using the .pope/ layout,
-    // inside .pope/ - either way popeToolPath is a path to that clone,
-    // relative to wherever this file itself sits.
-    //
-    // popeToolPath comes from gradle.properties next to this file, which is
-    // gitignored (it's machine-specific - wherever *you* cloned pope,
-    // relative to this project) - never a shared fallback baked in here,
-    // since that would silently point at whoever first scaffolded this
-    // project's own clone location instead of yours.
-    val popeToolPath =
-        providers.gradleProperty("popeToolPath").getOrNull()
-            ?: error(
-                "popeToolPath is not set. Create gradle.properties next to this settings.gradle.kts with:\n" +
-                    "  popeToolPath=<path to your own pope clone, relative or absolute>",
-            )
-    includeBuild(popeToolPath)
+    // pope is resolved by coordinate from its published Maven repo - the
+    // maven-repo branch of github.com/BalticAmadeus/pope, served over
+    // GitHub Pages. No local clone, no machine-specific path.
+    repositories {
+        maven {
+            url = uri("https://balticamadeus.github.io/pope/")
+        }
+        gradlePluginPortal()
+    }
 }
 
 rootProject.name = "{{ROOT_PROJECT_NAME}}"
