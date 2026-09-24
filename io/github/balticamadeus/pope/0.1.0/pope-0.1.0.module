@@ -39,10 +39,10 @@
           "name": "pope-0.1.0.jar",
           "url": "pope-0.1.0.jar",
           "size": 164126,
-          "sha512": "8138ef5c3a0a454cc600635e4e630218ab7e6cd7d69af317fc475a486277803a2a9c61f5e60ac6f787315db3b54ee99137dc5b4fd8518d07a99b028ecd357606",
-          "sha256": "51aad0f987b5d586639abfc54e5224dd4ea6f97a89e941e18958fad584c7ffab",
-          "sha1": "6e484556302a22219f39e0a392277d21e92a91c3",
-          "md5": "f8c10be29f25dff0b6b457d2daa8472e"
+          "sha512": "b79acc8c32eb7a40d00f1cfec52c09dbc409ed3d70d59dfd9305add63fabd754692055c38f1198cfff3c42460b9c8e9332e29d69df9ab8a444c39e3a528ebef8",
+          "sha256": "6c3cd9f25d89481c8375b7de3606d5c93d27455732ff13d9f8fbcbb2e069a617",
+          "sha1": "0c41fc7cc46e8dca199e98334db8654211420106",
+          "md5": "34a511e012974b265b874d88837ba444"
         }
       ]
     },
@@ -78,10 +78,10 @@
           "name": "pope-0.1.0.jar",
           "url": "pope-0.1.0.jar",
           "size": 164126,
-          "sha512": "8138ef5c3a0a454cc600635e4e630218ab7e6cd7d69af317fc475a486277803a2a9c61f5e60ac6f787315db3b54ee99137dc5b4fd8518d07a99b028ecd357606",
-          "sha256": "51aad0f987b5d586639abfc54e5224dd4ea6f97a89e941e18958fad584c7ffab",
-          "sha1": "6e484556302a22219f39e0a392277d21e92a91c3",
-          "md5": "f8c10be29f25dff0b6b457d2daa8472e"
+          "sha512": "b79acc8c32eb7a40d00f1cfec52c09dbc409ed3d70d59dfd9305add63fabd754692055c38f1198cfff3c42460b9c8e9332e29d69df9ab8a444c39e3a528ebef8",
+          "sha256": "6c3cd9f25d89481c8375b7de3606d5c93d27455732ff13d9f8fbcbb2e069a617",
+          "sha1": "0c41fc7cc46e8dca199e98334db8654211420106",
+          "md5": "34a511e012974b265b874d88837ba444"
         }
       ]
     }
