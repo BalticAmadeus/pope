@@ -13,7 +13,7 @@ rem infer package_name, etc.). See docs/decisions/0008-plugin-publishing-v1.md.
 
 set "POPE_REPO_RAW=https://raw.githubusercontent.com/BalticAmadeus/pope/main"
 set "TARGET_DIR=%CD%"
-set "REGISTRIES="
+set /a REG_COUNT=0
 
 set "POPE_VERSION=%~1"
 if "%POPE_VERSION%"=="" (
@@ -34,11 +34,14 @@ if "%URL%"=="" (
     goto registry_loop
 )
 
-if "%REGISTRIES%"=="" (
-    set REGISTRIES=%PREFIX%=%URL%
-) else (
-    set REGISTRIES=!REGISTRIES!,%PREFIX%=%URL%
-)
+rem Stored as indexed variables, not a delimited "prefix=url,prefix=url"
+rem string - cmd's plain "for %%R in (...)" (no /F) treats "=" itself as
+rem an item separator, same as space/comma/semicolon, so splitting a
+rem combined string back apart later silently loses every URL (each
+rem "prefix=url" pair gets torn into two separate, valueless tokens).
+set /a REG_COUNT+=1
+set "REG_PREFIX_%REG_COUNT%=%PREFIX%"
+set "REG_URL_%REG_COUNT%=%URL%"
 
 :ask_again
 set /p AGAIN="Add another registry? [yes/no]: "
@@ -117,11 +120,9 @@ if %ERRORLEVEL%==0 (
 )
 
 :apply_registries
-if "%REGISTRIES%"=="" goto offer_global_cli
-for %%R in (%REGISTRIES:,= %) do (
-    for /f "tokens=1,2 delims==" %%A in ("%%R") do (
-        call gradlew.bat popeRegistryAdd "-PregistryPrefix=%%A" "-PcatalogUrl=%%B"
-    )
+if %REG_COUNT%==0 goto offer_global_cli
+for /l %%I in (1,1,%REG_COUNT%) do (
+    call gradlew.bat popeRegistryAdd "-PregistryPrefix=!REG_PREFIX_%%I!" "-PcatalogUrl=!REG_URL_%%I!"
 )
 
 :offer_global_cli
