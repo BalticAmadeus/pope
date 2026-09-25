@@ -56,6 +56,12 @@ if not exist "%GRADLEW%" (
 if "%~1"=="" goto usage
 set COMMAND=%~1
 
+if /I "%COMMAND%"=="version" (
+    if not "%~2"=="" goto usage
+    call :run_gradle popeVersion
+    goto :eof
+)
+
 if /I "%COMMAND%"=="install" (
     if "%~2"=="" (
         call :run_gradle popeInstall
@@ -136,6 +142,7 @@ goto :eof
 
 :usage
 echo Usage (running against %PROJECT_ROOT%):
+echo   pope version                          print the installed pope plugin version
 echo   pope install                          resolve declared dependencies
 echo   pope install ^<package^>[:^<versionSpec^>] add + resolve a dependency in one step
 echo   pope uninstall ^<package^>              remove a dependency and clean up its files

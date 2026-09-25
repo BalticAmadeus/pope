@@ -2,7 +2,7 @@
 # Thin syntax wrapper around the popeInstall/popePropath Gradle tasks.
 # Not a standalone CLI: it locates gradlew relative to itself and forwards
 # to whatever Gradle project it's run from, which must already apply the
-# pope plugin (id("io.github.erudys27.pope")) - see README.md.
+# pope plugin (id("io.github.balticamadeus.pope")) - see README.md.
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +22,7 @@ fi
 
 usage() {
     echo "Usage:"
+    echo "  pope version                          print the installed pope plugin version"
     echo "  pope install                          resolve declared dependencies"
     echo "  pope install <package>[:<versionSpec>] add + resolve a dependency in one step"
     echo "  pope uninstall <package>               remove a dependency and clean up its files"
@@ -40,6 +41,10 @@ command="$1"
 shift
 
 case "$command" in
+    version)
+        [ "$#" -eq 0 ] || usage
+        "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeVersion
+        ;;
     install)
         if [ "$#" -eq 0 ]; then
             "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeInstall

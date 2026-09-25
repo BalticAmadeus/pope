@@ -148,4 +148,48 @@ class PublishedPluginFunctionalTest {
             "Expected .gitignore to be generated with pope_packages/ ignored",
         )
     }
+
+    /**
+     * popeVersion reads Package.getImplementationVersion() off the plugin's own class - only ever
+     * set on a real packaged jar (see build.gradle.kts's "jar" task manifest), never when applied via
+     * includeBuild/withPluginClasspath(). Only provable against a genuinely published-and-resolved
+     * jar, same reason this whole file exists rather than PopePluginFunctionalTest.
+     */
+    @Test
+    fun `popeVersion prints the version the plugin was actually resolved at`() {
+        val pluginVersion =
+            System.getProperty("popePluginVersion")
+                ?: error("popePluginVersion system property not set - see build.gradle.kts's functionalTest task")
+
+        val projectDir = createTempDirectory("pope-version-consumer").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    mavenLocal()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "popeversion-fixture"
+            """.trimIndent(),
+        )
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope") version "$pluginVersion"
+            }
+            """.trimIndent(),
+        )
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withArguments("popeVersion")
+                .build()
+
+        assertTrue(
+            result.output.lines().any { it.trim() == pluginVersion },
+            "Expected popeVersion to print \"$pluginVersion\", got:\n${result.output}",
+        )
+    }
 }

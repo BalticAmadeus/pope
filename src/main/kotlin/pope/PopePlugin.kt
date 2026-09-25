@@ -211,6 +211,19 @@ class PopePlugin : Plugin<Project> {
             }
         }
 
+        project.tasks.register("popeVersion") { task ->
+            task.group = "pope"
+            task.description = "Prints the installed pope plugin version."
+            task.doLast {
+                // Only set on a real packaged jar (see build.gradle.kts's
+                // "jar" task manifest) - null when the plugin is applied
+                // via includeBuild instead of a resolved coordinate, since
+                // there's no packaged jar manifest to read it from then.
+                val version = javaClass.`package`.implementationVersion ?: "unknown (not applied from a published version)"
+                project.logger.lifecycle(version)
+            }
+        }
+
         project.tasks.register("popePropath") { task ->
             task.group = "pope"
             task.description =

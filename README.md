@@ -93,6 +93,7 @@ Gradle plugin is.
 
 ```
 pope-init                              wire up a new/existing project (interactive)
+pope version                           print the installed pope plugin version
 pope install                           resolve declared dependencies
 pope install <package>[:<versionSpec>] add + resolve a dependency in one step
 pope uninstall <package>               remove a dependency and clean up its files

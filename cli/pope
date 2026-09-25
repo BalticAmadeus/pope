@@ -65,6 +65,7 @@ run_gradle() {
 
 usage() {
     echo "Usage (running against $PROJECT_ROOT):"
+    echo "  pope version                          print the installed pope plugin version"
     echo "  pope install                          resolve declared dependencies"
     echo "  pope install <package>[:<versionSpec>] add + resolve a dependency in one step"
     echo "  pope uninstall <package>               remove a dependency and clean up its files"
@@ -83,6 +84,10 @@ command="$1"
 shift
 
 case "$command" in
+    version)
+        [ "$#" -eq 0 ] || usage
+        run_gradle popeVersion
+        ;;
     install)
         if [ "$#" -eq 0 ]; then
             run_gradle popeInstall
