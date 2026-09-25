@@ -357,6 +357,30 @@ class DependencyResolverTest {
         assertEquals(setOf("calculator", "greeter"), resolved.keys)
     }
 
+    @Test
+    fun `a resolved package's popeToolVersion carries through from its own manifest`() {
+        val root = registryRoot()
+        val packageDir = File(root, "example.calculator").apply { mkdirs() }
+        File(packageDir, "openedge-project.json").writeText(
+            """
+            {
+              "name": "example.calculator-project",
+              "version": "1.0.0",
+              "popePackageName": "example.calculator",
+              "popeToolVersion": "1.2.0",
+              "buildPath": [{ "type": "source", "path": "src" }]
+            }
+            """.trimIndent(),
+        )
+        File(packageDir, "src").mkdirs()
+        val registry = LocalDirectoryRegistry(root)
+
+        val resolved =
+            DependencyResolver.resolveAll(versionMap("example.calculator" to "^1.0.0"), registry, directSourceCacheDir())
+
+        assertEquals("1.2.0", resolved.getValue("example.calculator").popeToolVersion)
+    }
+
     // --- direct-source trust gate ---
 
     @Test

@@ -140,6 +140,20 @@ class PopePlugin : Plugin<Project> {
                 val resolvedPackages =
                     DependencyResolver.resolveAll(dependenciesToResolve, registry, directSourceCacheDir, onDirectSource)
 
+                // Warn-only for now - a major-version mismatch is a strong hint of an incompatible
+                // manifest shape or behavior, but v1 of this check is unproven enough that a false
+                // positive shouldn't be able to block anyone's install.
+                val installedVersion = PopeVersion.current()
+                resolvedPackages.forEach { (packageName, resolvedPackage) ->
+                    if (PopeVersion.majorMismatch(installedVersion, resolvedPackage.popeToolVersion)) {
+                        project.logger.warn(
+                            "  ! \"$packageName\" was written by pope ${resolvedPackage.popeToolVersion}, but you're " +
+                                "running pope $installedVersion - a major-version difference can mean an incompatible " +
+                                "manifest shape or behavior. Proceeding anyway.",
+                        )
+                    }
+                }
+
                 // Catches a moved/hijacked tag before touching pope_packages/, not after.
                 val existingLock = LockfileReader.read(projectRoot.resolve("pope.lock"))
                 val integrities =
@@ -215,7 +229,7 @@ class PopePlugin : Plugin<Project> {
             task.group = "pope"
             task.description = "Prints the installed pope plugin version."
             task.doLast {
-                val version = javaClass.`package`.implementationVersion ?: "unknown (not applied from a published version)"
+                val version = PopeVersion.current() ?: "unknown (not applied from a published version)"
                 // quiet, not lifecycle - survives -q (see pope.bat's "version" subcommand).
                 project.logger.quiet("")
                 project.logger.quiet(version)

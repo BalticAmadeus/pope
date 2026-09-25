@@ -103,6 +103,36 @@ class ManifestReaderTest {
     }
 
     @Test
+    fun `reads popeToolVersion when present, null when absent`() {
+        val withVersion = createTempFile(suffix = ".json")
+        withVersion.writeText(
+            """
+            {
+              "name": "consumer-app",
+              "version": "1.0.0",
+              "popePackageName": "example.consumer",
+              "popeToolVersion": "1.2.0",
+              "buildPath": [{ "type": "source", "path": "src" }]
+            }
+            """.trimIndent(),
+        )
+        assertEquals("1.2.0", ManifestReader.read(withVersion.toFile()).popeToolVersion)
+
+        val withoutVersion = createTempFile(suffix = ".json")
+        withoutVersion.writeText(
+            """
+            {
+              "name": "consumer-app",
+              "version": "1.0.0",
+              "popePackageName": "example.consumer",
+              "buildPath": [{ "type": "source", "path": "src" }]
+            }
+            """.trimIndent(),
+        )
+        assertEquals(null, ManifestReader.read(withoutVersion.toFile()).popeToolVersion)
+    }
+
+    @Test
     fun `sourceRoots only includes buildPath entries of type source, in order`() {
         val file = createTempFile(suffix = ".json")
         file.writeText(

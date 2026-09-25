@@ -1,5 +1,6 @@
 package pope.manifest
 
+import pope.PopeVersion
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,10 +12,16 @@ import java.io.StringWriter
  * on its own. Every pope write path routes through here. Purely cosmetic.
  */
 object ManifestWriter {
-    private val canonicalKeyOrder = listOf("name", "version", "oeversion", "popePackageName", "popeDependencies", "buildPath")
+    private val canonicalKeyOrder =
+        listOf("name", "version", "oeversion", "popePackageName", "popeDependencies", "popeToolVersion", "buildPath")
     private const val indentFactor = 2
 
     fun write(file: File, json: JSONObject) {
+        // Stamped on every write, not just when the caller sets it explicitly - this is how any
+        // manifest pope ever touches ends up recording which pope version last wrote it. Skipped
+        // silently when unavailable (e.g. applied via includeBuild, no packaged jar to read it from).
+        PopeVersion.current()?.let { json.put("popeToolVersion", it) }
+
         val orderedKeys = canonicalKeyOrder.filter { json.has(it) } + json.keySet().filter { it !in canonicalKeyOrder }
 
         val writer = StringWriter()
