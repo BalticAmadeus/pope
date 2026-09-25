@@ -264,4 +264,79 @@ class PublishedPluginFunctionalTest {
             "Expected the install to still succeed despite the warning, got:\n${result.output}",
         )
     }
+
+    /**
+     * popeStamp exists specifically so a package with no Gradle wiring of its own (a plain
+     * manifest+source repo, like a leaf dependency) can still get popeToolVersion refreshed -
+     * pope.projectRoot points at that package's checkout from an entirely separate Gradle project,
+     * and nothing but its openedge-project.json should ever be touched.
+     */
+    @Test
+    fun `popeStamp refreshes popeToolVersion on an external projectRoot, touching nothing else there`() {
+        val pluginVersion =
+            System.getProperty("popePluginVersion")
+                ?: error("popePluginVersion system property not set - see build.gradle.kts's functionalTest task")
+
+        // The "package" being stamped - no gradlew, no settings.gradle.kts, nothing but its own
+        // manifest+source, exactly like a real leaf dependency repo.
+        val packageDir = createTempDirectory("pope-stamp-target-package").toFile()
+        packageDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "stamp-target-package")
+                .put("version", "1.0.0")
+                .put("popePackageName", "example.stamptarget")
+                .put("popeDependencies", JSONObject())
+                .put(
+                    "buildPath",
+                    org.json.JSONArray().put(JSONObject().put("type", "source").put("path", "src")),
+                ).toString(2),
+        )
+        val packagePath = packageDir.absolutePath.replace("\\", "/")
+
+        // The separate "stamper" project - this is where all the Gradle wiring lives, never inside
+        // packageDir.
+        val stamperDir = createTempDirectory("pope-stamp-stamper").toFile()
+        stamperDir.resolve("settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    mavenLocal()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "stamper-fixture"
+            """.trimIndent(),
+        )
+        stamperDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope") version "$pluginVersion"
+            }
+
+            pope {
+                projectRoot.set(file("$packagePath"))
+            }
+            """.trimIndent(),
+        )
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(stamperDir)
+                .withArguments("popeStamp")
+                .build()
+
+        assertTrue(
+            result.output.contains("refreshed popeToolVersion"),
+            "Expected popeStamp to report refreshing popeToolVersion, got:\n${result.output}",
+        )
+        val manifest = JSONObject(File(packageDir, "openedge-project.json").readText())
+        assertTrue(
+            manifest.getString("popeToolVersion") == pluginVersion,
+            "Expected popeToolVersion to be stamped as \"$pluginVersion\", got: ${manifest.opt("popeToolVersion")}",
+        )
+        assertTrue(
+            packageDir.listFiles()!!.map { it.name }.toSet() == setOf("openedge-project.json"),
+            "Expected nothing but openedge-project.json in packageDir, got: ${packageDir.listFiles()!!.map { it.name }}",
+        )
+    }
 }

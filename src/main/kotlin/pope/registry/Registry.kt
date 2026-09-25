@@ -19,8 +19,6 @@ data class ResolvedPackage(
     val projectDir: File,
     val installSubpath: String? = null,
     val installLayout: InstallLayout = InstallLayout.Isolated,
-    // The pope version that wrote this package's own manifest (Manifest.popeToolVersion) - carried
-    // here so popeInstall can warn on a major-version mismatch without re-reading the manifest.
     val popeToolVersion: String? = null,
 )
 

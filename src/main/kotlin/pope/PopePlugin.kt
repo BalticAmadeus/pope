@@ -8,6 +8,7 @@ import pope.manifest.BuildPathUpdater
 import pope.manifest.DependenciesUpdater
 import pope.manifest.DependencySpec
 import pope.manifest.ManifestReader
+import pope.manifest.ManifestWriter
 import pope.manifest.PackageNameInferrer
 import pope.propath.PropathGenerator
 import pope.registry.CatalogRegistry
@@ -140,9 +141,8 @@ class PopePlugin : Plugin<Project> {
                 val resolvedPackages =
                     DependencyResolver.resolveAll(dependenciesToResolve, registry, directSourceCacheDir, onDirectSource)
 
-                // Warn-only for now - a major-version mismatch is a strong hint of an incompatible
-                // manifest shape or behavior, but v1 of this check is unproven enough that a false
-                // positive shouldn't be able to block anyone's install.
+                // Warn-only for now - v1 of this check is unproven enough that a false positive
+                // shouldn't be able to block an install.
                 val installedVersion = PopeVersion.current()
                 resolvedPackages.forEach { (packageName, resolvedPackage) ->
                     if (PopeVersion.majorMismatch(installedVersion, resolvedPackage.popeToolVersion)) {
@@ -222,6 +222,21 @@ class PopePlugin : Plugin<Project> {
                         }
                     }
                 }
+            }
+        }
+
+        project.tasks.register("popeStamp") { task ->
+            task.group = "pope"
+            task.description =
+                "Refreshes popeToolVersion on openedge-project.json, touching nothing else - for a " +
+                "package with nothing else needing a patch (e.g. a leaf dependency with no deps of its " +
+                "own), popeInit wouldn't otherwise write anything. Point pope.projectRoot at the " +
+                "package's own checkout - no Gradle wiring needs to live in that repo at all."
+            task.doLast {
+                val manifestFile = extension.projectRoot.get().asFile.resolve("openedge-project.json")
+                require(manifestFile.exists()) { "No openedge-project.json found at ${manifestFile.path}" }
+                ManifestWriter.write(manifestFile, JSONObject(manifestFile.readText()))
+                project.logger.lifecycle("  refreshed popeToolVersion in ${manifestFile.path}")
             }
         }
 
@@ -416,7 +431,7 @@ class PopePlugin : Plugin<Project> {
                         scaffoldResource("openedge-project.json.template")
                             .replace("{{PROJECT_NAME}}", project.name)
                             .replace("{{PACKAGE_NAME}}", packageName)
-                    manifestFile.writeText(rendered)
+                    ManifestWriter.write(manifestFile, JSONObject(rendered))
                     project.logger.lifecycle("  + generated openedge-project.json (popePackageName: \"$packageName\")")
                 } else {
                     val json = JSONObject(manifestFile.readText())
@@ -440,11 +455,10 @@ class PopePlugin : Plugin<Project> {
                         patched = true
                     }
 
-                    if (patched) {
-                        manifestFile.writeText(json.toString(2))
-                    } else {
+                    if (!patched) {
                         project.logger.lifecycle("  openedge-project.json already has everything pope needs - left untouched")
                     }
+                    ManifestWriter.write(manifestFile, json) // written either way - also refreshes popeToolVersion
                 }
 
                 val gitignoreFile = File(projectRoot, ".gitignore")
