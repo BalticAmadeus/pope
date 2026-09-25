@@ -108,6 +108,7 @@ object DependencyResolver {
         val ownManifestFile = resolvedPackage.projectDir.resolve("openedge-project.json")
         if (ownManifestFile.exists()) {
             val ownManifest = ManifestReader.read(ownManifestFile)
+            resolved[packageKey] = resolvedPackage.copy(popeToolVersion = ownManifest.popeToolVersion)
             namespaceByKey[packageKey] = ownManifest.packageName
             for ((depName, depSpec) in ownManifest.dependencies) {
                 resolveOne(
