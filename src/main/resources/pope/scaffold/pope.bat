@@ -25,7 +25,7 @@ set COMMAND=%~1
 
 if /I "%COMMAND%"=="version" (
     if not "%~2"=="" goto usage
-    call :run_gradle popeVersion
+    call :run_gradle -q popeVersion
     goto :eof
 )
 
@@ -108,10 +108,10 @@ goto :eof
 
 :usage
 echo Usage:
-echo   pope version                          print the installed pope plugin version
-echo   pope install                          resolve declared dependencies
+echo   pope version                           print the installed pope plugin version
+echo   pope install                           resolve declared dependencies
 echo   pope install ^<package^>[:^<versionSpec^>] add + resolve a dependency in one step
-echo   pope uninstall ^<package^>              remove a dependency and clean up its files
+echo   pope uninstall ^<package^>               remove a dependency and clean up its files
 echo   pope propath [--tests]                 print the generated PROPATH
 echo                                          (--tests also includes buildPath's "test" entries)
 echo   pope registry add [^<prefix^> ^<url^> [^<name^>]]  add a registry to pope-registries.properties

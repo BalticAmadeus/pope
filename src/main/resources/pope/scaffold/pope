@@ -22,8 +22,8 @@ fi
 
 usage() {
     echo "Usage:"
-    echo "  pope version                          print the installed pope plugin version"
-    echo "  pope install                          resolve declared dependencies"
+    echo "  pope version                           print the installed pope plugin version"
+    echo "  pope install                           resolve declared dependencies"
     echo "  pope install <package>[:<versionSpec>] add + resolve a dependency in one step"
     echo "  pope uninstall <package>               remove a dependency and clean up its files"
     echo "  pope propath [--tests]                 print the generated PROPATH"
@@ -43,7 +43,7 @@ shift
 case "$command" in
     version)
         [ "$#" -eq 0 ] || usage
-        "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" popeVersion
+        "$GRADLEW" "${PROJECT_DIR_ARGS[@]}" -q popeVersion
         ;;
     install)
         if [ "$#" -eq 0 ]; then
