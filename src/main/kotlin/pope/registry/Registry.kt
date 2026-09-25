@@ -19,6 +19,7 @@ data class ResolvedPackage(
     val projectDir: File,
     val installSubpath: String? = null,
     val installLayout: InstallLayout = InstallLayout.Isolated,
+    val popeToolVersion: String? = null,
 )
 
 interface Registry {

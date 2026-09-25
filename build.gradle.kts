@@ -3,6 +3,7 @@
 // java {} extension accessor, not the java.* package - shadows
 // java.util.Properties unless imported properly.
 import java.util.Properties
+import org.gradle.jvm.tasks.Jar
 
 // Lets the scaffoldProject task below use org.json.JSONObject directly in
 // its own script body - dependencies{} further down only puts it on this
@@ -60,6 +61,15 @@ repositories {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// Lets popeVersion (PopePlugin.kt) read its own version back at runtime
+// via Package.getImplementationVersion() - Gradle exposes no simpler
+// "what version was I resolved at" API to a plugin's own code.
+tasks.named<Jar>("jar") {
+    manifest {
+        attributes("Implementation-Version" to project.version)
+    }
 }
 
 val functionalTest: SourceSet by sourceSets.creating

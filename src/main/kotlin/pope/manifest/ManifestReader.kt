@@ -39,6 +39,7 @@ object ManifestReader {
             dependencies = dependencies,
             sourceRoots = sourceRoots,
             testRoots = testRoots,
+            popeToolVersion = json.optString("popeToolVersion").takeIf { it.isNotBlank() },
         )
     }
 

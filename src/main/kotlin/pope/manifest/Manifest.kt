@@ -22,4 +22,5 @@ data class Manifest(
     // PROPATH (PropathGenerator's includeTests) - never for a dependency,
     // so a dependency's tests can't leak into a consumer's PROPATH.
     val testRoots: List<String> = emptyList(),
+    val popeToolVersion: String? = null,
 )
