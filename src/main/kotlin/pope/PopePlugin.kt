@@ -211,6 +211,18 @@ class PopePlugin : Plugin<Project> {
             }
         }
 
+        project.tasks.register("popeVersion") { task ->
+            task.group = "pope"
+            task.description = "Prints the installed pope plugin version."
+            task.doLast {
+                val version = javaClass.`package`.implementationVersion ?: "unknown (not applied from a published version)"
+                // quiet, not lifecycle - survives -q (see pope.bat's "version" subcommand).
+                project.logger.quiet("")
+                project.logger.quiet(version)
+                project.logger.quiet("")
+            }
+        }
+
         project.tasks.register("popePropath") { task ->
             task.group = "pope"
             task.description =

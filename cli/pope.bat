@@ -56,6 +56,19 @@ if not exist "%GRADLEW%" (
 if "%~1"=="" goto usage
 set COMMAND=%~1
 
+rem Direct call, not :run_gradle - that subroutine adds its own trailing
+rem blank line for spacing between commands, which would double up with
+rem popeVersion's own leading/trailing blank lines.
+if /I "%COMMAND%"=="version" (
+    if not "%~2"=="" goto usage
+    if "%USE_SUBDIR%"=="1" (
+        call "%GRADLEW%" -p "%POPE_SUBDIR%" -q popeVersion
+    ) else (
+        call "%GRADLEW%" -q popeVersion
+    )
+    goto :eof
+)
+
 if /I "%COMMAND%"=="install" (
     if "%~2"=="" (
         call :run_gradle popeInstall
@@ -136,9 +149,10 @@ goto :eof
 
 :usage
 echo Usage (running against %PROJECT_ROOT%):
-echo   pope install                          resolve declared dependencies
+echo   pope version                           print the installed pope plugin version
+echo   pope install                           resolve declared dependencies
 echo   pope install ^<package^>[:^<versionSpec^>] add + resolve a dependency in one step
-echo   pope uninstall ^<package^>              remove a dependency and clean up its files
+echo   pope uninstall ^<package^>               remove a dependency and clean up its files
 echo   pope propath [--tests]                 print the generated PROPATH
 echo                                          (--tests also includes buildPath's "test" entries)
 echo   pope registry add [^<prefix^> ^<url^> [^<name^>]]  add a registry to pope-registries.properties
