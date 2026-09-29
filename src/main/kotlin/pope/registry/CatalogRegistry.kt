@@ -13,8 +13,9 @@ import java.io.File
 /**
  * Registry backed by a small "catalog" git repo holding no package
  * content, only one reference file per package version
- * (packages/<local_name>/<version>.json) pointing at that package's real
- * repo + tag. Fetching goes through GitPackageFetcher's cache.
+ * (packages/<local_name>/<version>.json, {repoUrl, version}) pointing at
+ * that package's real repo. Fetching goes through GitPackageFetcher's
+ * cache.
  *
  * "local_name" = packageName with the registry's prefix stripped - just a
  * lookup key, not part of the package's real identity.
@@ -95,7 +96,15 @@ class CatalogRegistry(
 
     private fun fetchAndBuild(packageName: String, localName: String, reference: PackageReference): ResolvedPackage {
         val packageDir = File(cacheDir, localName)
-        val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, reference.ref, packageDir)
+        val ref = "v${reference.version}"
+        val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, ref, packageDir)
+
+        require(fetched.version == reference.version) {
+            "Catalog \"$registryName\" claims \"$packageName\" $ref is version ${reference.version}, but its own " +
+                "openedge-project.json declares version ${fetched.version} instead - the catalog reference and " +
+                "the package's own manifest disagree."
+        }
+
         // installSubpath is this registry's own name, not its prefix - every package resolved from
         // here shares one pope_packages/<registryName>/ root (see InstallLayout.SharedRegistryRoot).
         return fetched.copy(installSubpath = registryName, installLayout = InstallLayout.SharedRegistryRoot)
@@ -125,7 +134,7 @@ class CatalogRegistry(
         GitCli.run(null, "clone", "--branch", catalogRef, catalogUrl, catalogDir.path)
     }
 
-    private data class PackageReference(val repoUrl: String, val version: String, val ref: String)
+    private data class PackageReference(val repoUrl: String, val version: String)
 
     private fun readReference(file: File, localName: String): PackageReference {
         val json =
@@ -141,10 +150,7 @@ class CatalogRegistry(
         val version =
             json.optString("version").takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Catalog reference file ${file.path} is missing \"version\"")
-        val ref =
-            json.optString("ref").takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Catalog reference file ${file.path} is missing \"ref\"")
 
-        return PackageReference(repoUrl, version, ref)
+        return PackageReference(repoUrl, version)
     }
 }
