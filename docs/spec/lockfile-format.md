@@ -27,16 +27,16 @@ is what makes that single resolved choice explicit and stable.
   "resolved": {
     "acme.common": {
       "version": "1.0.3",
-      "source": "/home/you/.pope/cache/registry-ba/common/v1.0.3",
+      "source": "/home/you/.pope/cache/acme-registry/common/v1.0.3",
       "integrity": "sha256:...",
-      "installSubpath": "registry-ba",
+      "installSubpath": "acme-registry",
       "files": ["acme/common/Common.cls"]
     },
     "acme.validation": {
       "version": "1.2.0",
-      "source": "/home/you/.pope/cache/registry-ba/validation/v1.2.0",
+      "source": "/home/you/.pope/cache/acme-registry/validation/v1.2.0",
       "integrity": "sha256:...",
-      "installSubpath": "registry-ba",
+      "installSubpath": "acme-registry",
       "files": ["acme/validation/Validation.cls"]
     }
   },
@@ -48,7 +48,7 @@ is what makes that single resolved choice explicit and stable.
 
 `installSubpath` and `files` (2026-09-18, shared-registry-root layout)
 record where a package landed under `pope_packages/` and which files it
-owns there. Both packages above share `installSubpath: "registry-ba"` —
+owns there. Both packages above share `installSubpath: "acme-registry"` —
 every package resolved from one registry lands in one shared
 `pope_packages/<registryName>/` root (its own already-namespace-mirroring
 source tree, e.g. `acme/common/Common.cls`, nests correctly under it with

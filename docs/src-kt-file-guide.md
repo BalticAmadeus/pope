@@ -183,7 +183,7 @@ Pure data. No logic.
 - If all files agree on one namespace, returns it. Zero matches or
   disagreement is a loud `IllegalStateException` (ADR-0002: fail, do not
   guess).
-- Used by `ManifestReader` (auto-infer) and by the `scaffoldProject` task.
+- Used by `ManifestReader` (auto-infer) and by the `popeInit` task.
 
 ### `manifest/BuildPathUpdater.kt`
 
@@ -259,7 +259,10 @@ Pure data. No logic.
   — the real remote registry.
 - The catalog is a small git repo that holds **no package content**, only
   reference files at `packages/<local_name>/<version>.json`, each pointing
-  at a real package repo + tag (`{ repoUrl, version, ref }`).
+  at a real package repo (`{ repoUrl, version }`) - the git tag fetched is
+  always derived as `v<version>`, never stored separately. `fetchAndBuild`
+  fails loudly if the fetched package's own manifest declares a different
+  version than the reference claimed.
 - `local_name` = the package name with this registry's `prefix` stripped.
   It is only a lookup key.
 - `ensureCatalogCloned()` clones the catalog (or fetches + hard-resets it
@@ -350,8 +353,8 @@ Pure data. No logic.
   `registries { }` DSL. One property per field, namespaced by registry
   name:
   ```
-  ba.prefix=ba.
-  ba.catalogUrl=https://github.com/erudys27/registry-ba.git
+  Paulius.prefix=Paulius.
+  Paulius.catalogUrl=https://github.com/PauliusKu/Registry
   ```
   - `read(file)` — parses all entries, sorted by name, failing loudly on a
     half-declared entry.
