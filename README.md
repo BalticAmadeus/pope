@@ -34,6 +34,14 @@ registries:
   shadowing each other).
 - **Integrity verification** - `pope.lock` records a content hash per
   package; a tag force-moved to different content fails loudly.
+- **Tool-version compatibility check** - every manifest pope writes gets
+  stamped with `popeToolVersion`; `pope install` warns (doesn't fail) if
+  a resolved dependency's major version differs from the one currently
+  running. `pope version` prints your own installed version; the
+  `popeStamp` Gradle task (`gradlew popeStamp`, no `pope` CLI shortcut)
+  refreshes the stamp on a package with no Gradle wiring of its own, e.g.
+  a leaf dependency - point a separate project's `pope.projectRoot` at
+  it and run the task from there.
 - **`buildPath` test entries** - `type: "test"` is excluded from PROPATH
   by default, included with `pope propath --tests`. Never leaks from a
   dependency into a consumer.
@@ -140,6 +148,20 @@ your-package/
   "buildPath": [{ "type": "source", "path": "src" }]
 }
 ```
+You don't need to type a `popeToolVersion` field yourself - it's
+auto-stamped the first time any pope command writes this file
+(`pope-init`, adding a dependency, etc.), and used later to warn a
+consumer if their pope is a different major version than whatever wrote
+this manifest. A brand new, hand-authored file like the one above just
+won't have it yet, which is fine - a package that never runs any pope
+command against its own repo (a plain leaf package with nothing else to
+manage) simply never gets this benefit, and that's an acceptable
+trade-off, not an error. If you want the check anyway without running
+pope in your package's own repo at all, either write the field in by
+hand, or run the `popeStamp` Gradle task from a *separate* project with
+`pope.projectRoot` pointed at your package's checkout - see the
+"Tool-version compatibility check" bullet under "Status" above.
+
 The folder structure under `src/` must mirror the class namespace - an
 ABL requirement, not a pope one. Fold your org into `popePackageName`/the
 namespace (e.g. `yourorg.yourpackage`, not bare `yourpackage`) so it
