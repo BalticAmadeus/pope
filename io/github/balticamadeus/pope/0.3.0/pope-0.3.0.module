@@ -1,0 +1,89 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.balticamadeus",
+    "module": "pope",
+    "version": "0.3.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.10.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "1.9.24"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "pope-0.3.0.jar",
+          "url": "pope-0.3.0.jar",
+          "size": 172524,
+          "sha512": "2145b83d12deed83a939570b31d448702518a405192df36abcc6636f10f93e93ac060bd36e3fd7957de2ff65dd4fee0106ee8180c966d01da9f3ca05295005c2",
+          "sha256": "a617660dbf89ea4c59687b130993ef0eeea55e5e031a8149be8953eab971586a",
+          "sha1": "bf5a1ce0ebff42f399ce16aae49278222244803b",
+          "md5": "8175fe12ebfc39290678b89ad8fe9b6f"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.json",
+          "module": "json",
+          "version": {
+            "requires": "20250517"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "1.9.24"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "pope-0.3.0.jar",
+          "url": "pope-0.3.0.jar",
+          "size": 172524,
+          "sha512": "2145b83d12deed83a939570b31d448702518a405192df36abcc6636f10f93e93ac060bd36e3fd7957de2ff65dd4fee0106ee8180c966d01da9f3ca05295005c2",
+          "sha256": "a617660dbf89ea4c59687b130993ef0eeea55e5e031a8149be8953eab971586a",
+          "sha1": "bf5a1ce0ebff42f399ce16aae49278222244803b",
+          "md5": "8175fe12ebfc39290678b89ad8fe9b6f"
+        }
+      ]
+    }
+  ]
+}
