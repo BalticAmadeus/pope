@@ -110,10 +110,11 @@ reference file per package version, at
 ```json
 {
   "repoUrl": "https://github.com/yourorg/calculator.git",
-  "version": "1.0.0",
-  "ref": "v1.0.0"
+  "version": "1.0.0"
 }
 ```
+The package repo itself must be tagged `v1.0.0` to match - the git tag
+pope fetches is always derived as `v<version>`, never stored separately.
 Create the repo, add that file, commit, push. That's the whole registry.
 Publishing a new version means adding another `<version>.json` file, not
 replacing the old one (see "Multi-version registries" above). Then point
@@ -155,8 +156,8 @@ one, is a duplicate-prefix error.
 
 **`pope-registries.properties`** (project root, committed, CLI-mutable):
 ```
-ba.prefix=ba.
-ba.catalogUrl=https://github.com/erudys27/registry-ba.git
+Paulius.prefix=Paulius.
+Paulius.catalogUrl=https://github.com/PauliusKu/Registry
 ```
 Add to it with `pope registry add [<prefix> <url> [<name>]]` (interactive
 if omitted).
@@ -165,22 +166,22 @@ if omitted).
 ```kotlin
 pope {
     registries {
-        create("ba") {
-            prefix.set("ba.")
-            catalogUrl.set("https://github.com/erudys27/registry-ba.git")
+        create("Paulius") {
+            prefix.set("Paulius.")
+            catalogUrl.set("https://github.com/PauliusKu/Registry")
         }
     }
 }
 ```
 
-A dependency like `"ba.calculator": "^1.0.0"` routes to whichever
+A dependency like `"Paulius.Util": "^0.0.1"` routes to whichever
 registry's prefix it starts with. You can also install by the registry's
-own name plus its local name, e.g. `pope install registry-ba/calculator` -
-or just `pope install calculator` and let pope search every registry for
+own name plus its local name, e.g. `pope install Paulius/Util` -
+or just `pope install Util` and let pope search every registry for
 it. See
-[registry-ba](https://github.com/erudys27/registry-ba) for a real catalog
+[Registry](https://github.com/PauliusKu/Registry) for a real catalog
 registry, and the packages it references (e.g.
-[calculator](https://github.com/erudys27/calculator)) for what a
+[Util](https://github.com/PauliusKu/Util)) for what a
 resolvable package repo looks like. If neither source has any entries,
 `popeInstall` falls back to a plain local-directory registry
 (`registryRoot`).

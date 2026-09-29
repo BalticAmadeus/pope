@@ -1,7 +1,7 @@
 # What each Kotlin/Gradle file does
 
 A plain-language tour of this repo's Gradle/build side — the root `.kts`
-build scripts, the wrapper, the scaffold templates — plus how the plugin
+build scripts, the wrapper, the bootstrap scripts — plus how the plugin
 code under `src/` fits together at runtime (the two step-by-step
 walkthroughs at the end). Written for a junior programmer who knows some
 programming but hasn't necessarily used Gradle or Kotlin before.
@@ -17,8 +17,8 @@ This repo used to be the whole `pope` monorepo — plugin, a `demo/` app,
 and registry content all together. It's since been split (see README.md's
 intro): this repo is just the plugin now. Real projects that *use* the
 plugin live elsewhere — real, remote catalog registries like
-[registry-ba](https://github.com/erudys27/registry-ba) and the packages
-they reference (e.g. [calculator](https://github.com/erudys27/calculator)),
+[Registry](https://github.com/PauliusKu/Registry) and the packages
+they reference (e.g. [Util](https://github.com/PauliusKu/Util)),
 plus small throwaway fixture packages this repo carries itself for tests
 (`src/functionalTest/resources/fixtures/`). Older docs in `docs/decisions/`
 and `docs/research/` may still mention `demo/` or `openedge-package-manager`
@@ -55,22 +55,14 @@ for you.
     class `pope.PopePlugin` (the class Gradle runs when someone applies
     the plugin).
   - Its dependencies: the `org.json` library (for reading/writing JSON)
-    and `kotlin-test` (for unit tests). A separate `buildscript {}` block
-    also pulls `org.json` onto the *script's own* compile-time classpath —
-    needed because this file uses `org.json.JSONObject` directly in its
-    own `scaffoldProject` task (see below), which is a different
-    classpath than the plugin's compiled output.
+    and `kotlin-test` (for unit tests).
   - A second test source set called `functionalTest` (see below), wired
     so `./gradlew check` runs it alongside the normal unit tests.
-  - Publishing config (`maven-publish`) — see ADR-0008 — and the
-    **`scaffoldProject`** task: not something the plugin itself registers
-    (a not-yet-wired project has no build to run a task against yet), so
-    it lives here instead, run against pope's own build with
-    `-PtargetDir=<path>`. Generates or non-destructively patches a
-    project's `openedge-project.json`, Gradle wrapper files (in `.pope/`
-    for a fresh project, at the root for an already-set-up one — see
-    `scaffold/templates/` below), and `pope-registries.properties`. This
-    is what `pope-init` calls under the hood.
+  - Publishing config (`maven-publish`, an overridable `popeVersion`
+    property, and a `jar` task manifest attribute so `popeVersion`
+    the *task* can read its own version back at runtime) — see ADR-0008
+    and `.github/workflows/publish.yml` for how a tagged release actually
+    gets published to the Maven repo consumers resolve the plugin from.
 - **`gradle.properties`** — a few project-wide settings. Currently just
   one line enabling Kotlin's official code style.
 - **`gradle/wrapper/gradle-wrapper.properties`** — pins the exact Gradle
@@ -85,14 +77,14 @@ for you.
   `gradlew.bat` on plain Windows cmd). They just launch the wrapper jar
   above.
 
-## `scaffold/templates/` — what `scaffoldProject` renders
+## `src/main/resources/pope/scaffold/` — bundled into the plugin jar
 
-Plain text templates with `{{TOKEN}}` placeholders, filled in by the
-`scaffoldProject` task above. Not compiled, not Kotlin — just data:
-`settings.gradle.kts.template`, `build.gradle.kts.template` (carries a
-`{{PROJECT_ROOT_BLOCK}}` token, empty for a legacy root-level layout or
-`projectRoot.set(file(".."))` for the `.pope/` layout), `gradle.properties.template`,
-`openedge-project.json.template`.
+Plain text/data files the `popeInit` task (see below) reads out of its
+own jar at runtime via `getResourceAsStream` — not off a filesystem path,
+since `popeInit` runs from a downloaded plugin with no repo checkout
+alongside it: `openedge-project.json.template` (a `{{TOKEN}}`-templated
+starter manifest) and the `pope`/`pope.bat` CLI source, copied verbatim
+into whatever project `popeInit` runs against.
 
 ## `src/` — the plugin code and its tests
 
@@ -105,9 +97,20 @@ What follows here is only the orientation the runtime walkthroughs below
 need — how the pieces fit together, not what each file contains.
 
 - **`PopePlugin.kt`** — the entry point. Its `apply()` runs once when a
-  project applies `id("io.github.balticamadeus.pope")` and registers five
-  tasks: **`popeInstall`** (resolve + install dependencies;
-  `-PpopeAdd=<package>[:<versionSpec>]` adds one in the same step),
+  project applies `id("io.github.balticamadeus.pope")` and registers
+  eight tasks: **`popeInit`** (finishes setting up a project once the
+  plugin's applied by coordinate — generates/patches
+  `openedge-project.json`, `.gitignore`, and copies the `pope`/`pope.bat`
+  CLI in, using resources bundled in the jar; this is what `pope-init`
+  calls under the hood), **`popeStamp`** (refreshes `popeToolVersion` on
+  `openedge-project.json` alone, for a package with nothing else needing
+  a patch, e.g. a leaf dependency with no Gradle wiring of its own —
+  point `pope.projectRoot` at that package's checkout from a separate
+  project), **`popeVersion`** (prints the installed pope plugin
+  version), **`popeInstall`** (resolve + install dependencies;
+  `-PpopeAdd=<package>[:<versionSpec>]` adds one in the same step; also
+  warns if a resolved dependency's `popeToolVersion` has a different
+  major version than the one currently running),
   **`popeUninstall`** (`-PpopeUninstall=<package>` — remove one
   dependency, re-resolve what's left, and clean up its `pope_packages/`/
   `pope.lock`/`buildPath` entries, same cleanup `popePrune` uses),
@@ -122,6 +125,7 @@ need — how the pieces fit together, not what each file contains.
   (`ManifestReader` / `ManifestWriter` / `Manifest`), infers a missing
   `popePackageName` from `.cls` files (`PackageNameInferrer`), and patches
   `popeDependencies` / `buildPath` (`DependenciesUpdater`, `BuildPathUpdater`).
+  `ManifestWriter` also stamps `popeToolVersion` on every write it makes.
 - **`registry/`** — given a package name + caret range, finds the package.
   `PrefixRoutingRegistry` routes by longest matching prefix to a
   `CatalogRegistry` (a git catalog repo of reference files) or the
@@ -140,14 +144,17 @@ need — how the pieces fit together, not what each file contains.
   absolute paths.
 - **`version/SemVer.kt`** — `SemVer` (parse/compare `X.Y.Z`) and
   `CaretRange` (`^X.Y.Z` matching).
+- **`PopeVersion.kt`** — the plugin's own version, read back at runtime
+  via the jar manifest (`current()`), and `majorMismatch()` for the
+  `popeInstall` warning above.
 
 ## Root `pope` / `pope.bat`, `cli/`, and `pope-init` — the command-line layer
 
 Not Kotlin or Gradle files themselves, but worth including since they're
 what you actually type:
 
-- **`pope`** (bash) / **`pope.bat`** (Windows) — thin scripts, scaffolded
-  into *each* project by `scaffoldProject`, that translate `pope install`/
+- **`pope`** (bash) / **`pope.bat`** (Windows) — thin scripts, copied into
+  *each* project by `popeInit`, that translate `pope install`/
   `pope propath`/`pope registry add` into the equivalent `./gradlew`
   calls. Find their target project by their own file location, so they
   work with zero global setup.
@@ -158,19 +165,25 @@ what you actually type:
   `git`/`npm` find their project root — which is what makes it safe to
   have exactly one copy on `PATH`.
 - **`cli/install.sh`** / **`cli/install.ps1`** — one-time, idempotent
-  setup that adds `cli/` to `PATH`.
-- **`pope-init`** / **`pope-init.bat`** — interactive wrapper: prompts for
-  registries, calls `scaffoldProject` against your current directory, and
-  offers to run the `cli/install` script too.
+  setup that adds `cli/` to `PATH`. Only these two files, plus
+  `cli/pope`/`cli/pope.bat`, ever get downloaded onto a machine for the
+  global-CLI setup — bare `pope <command>` works everywhere afterward,
+  but `pope-init` itself is never installed globally (it's only needed
+  once per new project, downloaded fresh each time - see below).
+- **`pope-init`** / **`pope-init.bat`** — standalone bootstrap scripts,
+  downloaded once per new project (no pope clone needed at all). They
+  download a fresh Gradle wrapper, write `settings.gradle.kts`/
+  `build.gradle.kts` pointed at the published plugin, prompt for
+  registries, run `gradlew popeInit`, then offer to run `cli/install`.
 
-## Step by step: `pope install ba.calculator`
+## Step by step: `pope install Paulius.Util`
 
-Say a consumer project has `registries { create("ba") { ... } }`
-configured and declares `"ba.calculator": "^1.0.2"`. Here's roughly what
+Say a consumer project has `registries { create("Paulius") { ... } }`
+configured and declares `"Paulius.Util": "^0.0.1"`. Here's roughly what
 happens:
 
 1. **`pope`/`pope.bat`/`cli/pope`** forwards to
-   `gradlew popeInstall "-PpopeAdd=ba.calculator"` (or with no `-PpopeAdd`
+   `gradlew popeInstall "-PpopeAdd=Paulius.Util"` (or with no `-PpopeAdd`
    at all, for a plain `pope install` re-resolving what's already
    declared).
 2. **`gradlew`** launches the pinned Gradle version and runs the
@@ -185,7 +198,7 @@ happens:
       via the registry's `findAny` to pick whatever version exists and
       turns it into a caret range. Nothing written to disk yet.
    d. Hands the full dependency set to **`DependencyResolver.kt`**, which
-      routes `ba.calculator` to the `ba` registry (via
+      routes `Paulius.Util` to the `Paulius` registry (via
       `PrefixRoutingRegistry` → **`CatalogRegistry.kt`**), fetches it
       through **`GitPackageFetcher.kt`**'s bare-clone-plus-worktree
       cache, then reads *its* `openedge-project.json` and resolves
@@ -199,7 +212,7 @@ happens:
    f. Each resolved package's source is copied into
       `pope_packages/<installSubpath>/` — every package resolved from one
       registry shares that registry's own `pope_packages/<registryName>/`
-      root (`pope_packages/registry-ba/`), and every direct-source
+      root (`pope_packages/Paulius/`), and every direct-source
       dependency shares one `pope_packages/dependencies/` root, regardless
       of which registry (if any) declared it. A package's own source root
       already mirrors its real `popePackageName` as nested folders (a hard

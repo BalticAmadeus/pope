@@ -16,57 +16,58 @@ is" / "Status" for the full pitch and what currently works end to end.
 ## The repos
 
 This used to be one monorepo; it's since split into several real, separate
-GitHub repos, mostly under `github.com/erudys27/`; this one (`pope`) moved
-to `github.com/BalticAmadeus/pope` when it went to org ownership. The ones
-safe to reference in a demo (no other company's name in them):
+GitHub repos. This one (`pope`) is `github.com/BalticAmadeus/pope`. The
+ones safe to reference in a demo:
 
 | Repo | What it is |
 |---|---|
-| **`pope`** (this repo, `github.com/BalticAmadeus/pope`) | The plugin itself — everything under `src/`, plus the CLI (`pope`/`pope.bat`, `cli/`), scaffolding (`scaffold/`, `pope-init`), and docs. |
-| **`registry-ba`** | A catalog registry — a small repo holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo + tag. No package content lives in a registry itself. |
-| **`calculator`**, **`greeter`** | Individual packages, each its own repo, each tagged per version. `calculator` is referenced from the catalog above; `greeter` is a direct-source dependency (no catalog entry at all). |
-
-A couple of other registries/packages exist in the same erudys27 account
-from earlier testing (their prefixes/names reference another company) —
-don't use those in anything demo-facing; `registry-ba`/`calculator`/
-`greeter` above cover the same features (catalog registry, transitive
-resolution, direct-source dependency) without that problem.
+| **`pope`** (this repo, `github.com/BalticAmadeus/pope`) | The plugin itself — everything under `src/`, plus the CLI (`pope`/`pope.bat`, `cli/`), the standalone `pope-init`/`pope-init.bat` bootstrap scripts, and docs. Published as a real Maven-coordinate Gradle plugin (see README.md's "Per-machine setup") — nobody needs to clone this repo to *use* pope, only to develop it. |
+| **`PauliusKu/Registry`** | A catalog registry — a small repo holding only reference files (`packages/<name>/<version>.json`) that point at a package's own dedicated repo. No package content lives in a registry itself. |
+| **`PauliusKu/Util`**, **`PauliusKu/Language`** | Individual packages, each its own repo, each tagged per version, referenced from the catalog above. |
+| **`erudys27/pope-test`** | A real consumer project wired up against the published plugin — the actual "clone + `pope install`" experience, no pope-specific setup needed. |
 
 An older `openedge-package-manager` repo also exists (the original demo/
 consumer app), but it predates this split and still uses a local, not
-remote, registry setup — don't point anyone to it as a current example;
-`registry-ba`/`calculator` above are the real, remote, currently-relevant
-ones.
+remote, registry setup — don't point anyone to it as a current example.
 
 ## Repo layout (this repo, `pope`)
 
 ```
 docs/                             decisions/ (ADRs), spec/ (design docs), research/
 src/main/kotlin/pope/             the plugin - see docs/spec/kotlin-gradle-files.md
+src/main/resources/pope/scaffold/ templates/scripts bundled into the plugin jar, for popeInit
 src/test/kotlin/pope/             unit tests
 src/functionalTest/kotlin/pope/   TestKit tests - run the real plugin
-scaffold/templates/               templates scaffoldProject renders
-pope / pope.bat                   per-project CLI, scaffolded into each project
+pope / pope.bat                   per-project CLI, copied into each project by popeInit
 cli/                              global CLI + its one-time install script
-pope-init / pope-init.bat         interactive project scaffolding wrapper
-build.gradle.kts                  plugin build config + the scaffoldProject task
+pope-init / pope-init.bat         standalone bootstrap scripts (downloaded once, no pope clone needed)
+build.gradle.kts                  plugin build config
 ```
 
-The Gradle wrapper (`gradlew`/`gradlew.bat`) is checked in.
+The Gradle wrapper (`gradlew`/`gradlew.bat`) is checked in - for
+developing `pope` itself; a *consumer* project gets its own fresh copy
+from `pope-init`, it never needs this repo's copy.
 
-## One-time setup
+## One-time setup (using pope in a project - no clone needed)
 
-1. Clone `pope`.
-2. Run `./pope-init` (`pope-init.bat` on Windows) from inside whatever ABL
-   project you want to wire up to pope — prompts for registries, sets
-   everything up, and offers to install the global CLI too. Full detail
-   (including the non-interactive path) in README.md's "Per-machine
-   setup".
+1. Download `pope-init` (`pope-init.bat` on Windows) from this repo, into
+   whatever ABL project you want to wire up to pope.
+2. Run it — prompts for registries, downloads the Gradle wrapper, writes
+   `settings.gradle.kts`/`build.gradle.kts` pointed at the published
+   plugin, generates/patches `openedge-project.json`, and offers to
+   install the global CLI too. Full detail (including the non-interactive
+   path) in README.md's "Per-machine setup".
 3. If you skipped that prompt, `cli/install.sh` (`cli\install.ps1` on
    Windows) does the same PATH setup on its own — one-time, safe to
-   re-run. Once it's run, bare `pope-init` also works from any directory
-   (a thin forwarder in `cli/`, not a copy — see README's "Per-machine
-   setup" for why it's not simply pope's whole root added to PATH).
+   re-run. Once it's run, bare `pope <command>` works from any pope
+   project, any directory — `pope-init` itself is only needed again for
+   bootstrapping a *new* project, it doesn't get a global shortcut.
+
+Only someone developing `pope` itself needs to clone this repo. To try a
+local change without publishing anything, point a throwaway project's
+`settings.gradle.kts` at `includeBuild("<path to your pope clone>")`
+instead of the Maven repo, with no version on the `plugins {}` block —
+Gradle then rebuilds pope fresh from source on every run.
 
 To actually publish a package or stand up a new registry (not just
 consume one), see README.md's "Creating a registry" and "Publishing a
@@ -122,7 +123,7 @@ don't get re-litigated from scratch or assumed to be oversights:
 ## Where to read more
 
 - **`docs/spec/kotlin-gradle-files.md`** — the Gradle/build side (root
-  `.kts` scripts, wrapper, scaffold templates) plus the `pope install` /
+  `.kts` scripts, wrapper, bootstrap scripts) plus the `pope install` /
   `pope propath` runtime walkthroughs, written for someone new to
   Gradle/Kotlin. Read this to see how the pieces fit together.
 - **`docs/src-kt-file-guide.md`** — the per-file reference for the plugin

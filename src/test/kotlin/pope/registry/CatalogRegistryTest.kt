@@ -56,7 +56,7 @@ class CatalogRegistryTest {
             File(dir, "packages/$packageName").mkdirs()
             File(dir, "packages/$packageName/$version.json").writeText(
                 """
-                { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version", "ref": "v$version" }
+                { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version" }
                 """.trimIndent(),
             )
         }
@@ -94,6 +94,24 @@ class CatalogRegistryTest {
         assertTrue(File(cacheDir, "example.calculator/_bare.git/HEAD").exists())
         assertTrue(File(cacheDir, "example.calculator/v1.0.0/.git").exists())
         assertFalse(File(cacheDir, "example.greeter").exists())
+    }
+
+    @Test
+    fun `fetching fails loudly when the catalog's claimed version disagrees with the package's own manifest`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        // Tagged "v1.0.0" (matching the catalog's claim), but its own manifest actually says
+        // 9.9.9 - simulates a catalog reference that's drifted from what's really at that tag.
+        val repo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "9.9.9")
+        git(repo, "tag", "-d", "v9.9.9")
+        git(repo, "tag", "v1.0.0")
+        val catalog = catalogRepo(remotesRoot, mapOf("example.calculator" to (repo to "1.0.0")))
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val registry = registry(catalog, cacheDir)
+
+        val error = assertFailsWith<IllegalArgumentException> { registry.findAny("example.calculator") }
+        assertTrue(error.message!!.contains("1.0.0"))
+        assertTrue(error.message!!.contains("9.9.9"))
     }
 
     @Test
@@ -276,7 +294,7 @@ class CatalogRegistryTest {
         File(catalog, "packages/example.calculator/1.0.0.json").delete()
         File(catalog, "packages/example.calculator/2.0.0.json").writeText(
             """
-            { "repoUrl": "${calculatorRepoV1.absolutePath.replace("\\", "\\\\")}", "version": "2.0.0", "ref": "v2.0.0" }
+            { "repoUrl": "${calculatorRepoV1.absolutePath.replace("\\", "\\\\")}", "version": "2.0.0" }
             """.trimIndent(),
         )
         commitAll(catalog, "bump to 2.0.0")
@@ -313,11 +331,11 @@ class CatalogRegistryTest {
     }
 
     /** Writes (or overwrites) one catalog reference file, without touching any others already there. */
-    private fun addReference(catalog: File, localName: String, version: String, repoDir: File, ref: String = "v$version") {
+    private fun addReference(catalog: File, localName: String, version: String, repoDir: File) {
         File(catalog, "packages/$localName").mkdirs()
         File(catalog, "packages/$localName/$version.json").writeText(
             """
-            { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version", "ref": "$ref" }
+            { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version" }
             """.trimIndent(),
         )
         git(catalog, "add", "-A")

@@ -14,7 +14,7 @@ data class RegistryFileEntry(
  * A CLI-appendable alternative to registries{} (PopePlugin.kt), one
  * property per field, namespaced by registry name:
  *   ba.prefix=ba.
- *   ba.catalogUrl=https://github.com/erudys27/registry-ba.git
+ *   ba.catalogUrl=https://github.com/yourorg/registry-ba.git
  */
 object RegistriesPropertiesFile {
     fun read(file: File): List<RegistryFileEntry> {
