@@ -258,11 +258,13 @@ Pure data. No logic.
 - **`class CatalogRegistry(registryName, prefix, catalogUrl, catalogRef, cacheDir)`**
   — the real remote registry.
 - The catalog is a small git repo that holds **no package content**, only
-  reference files at `packages/<local_name>/<version>.json`, each pointing
-  at a real package repo (`{ repoUrl, version }`) - the git tag fetched is
-  always derived as `v<version>`, never stored separately. `fetchAndBuild`
-  fails loudly if the fetched package's own manifest declares a different
-  version than the reference claimed.
+  reference files at `packages/<local_name>/<version>.json` - the
+  filename is the version, the file's content just says where to fetch
+  it from (`{ repoUrl, ref }`). `ref` is passed straight to git, so it
+  can be a tag, a branch, or a raw commit SHA - it doesn't need to look
+  like the version at all. `fetchAndBuild` fails loudly if the fetched
+  package's own manifest declares a different version than the
+  filename claimed.
 - `local_name` = the package name with this registry's `prefix` stripped.
   It is only a lookup key.
 - `ensureCatalogCloned()` clones the catalog (or fetches + hard-resets it
