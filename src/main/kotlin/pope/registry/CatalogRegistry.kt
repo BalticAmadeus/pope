@@ -13,9 +13,11 @@ import java.io.File
 /**
  * Registry backed by a small "catalog" git repo holding no package
  * content, only one reference file per package version
- * (packages/<local_name>/<version>.json, {repoUrl, version}) pointing at
- * that package's real repo. Fetching goes through GitPackageFetcher's
- * cache.
+ * (packages/<local_name>/<version>.json, {repoUrl, ref}) pointing at
+ * that package's real repo - the version is the filename itself, not
+ * anything inside the file; ref can be a tag, a branch, or a raw commit
+ * SHA, whatever GitPackageFetcher's `git worktree add` accepts. Fetching
+ * goes through GitPackageFetcher's cache.
  *
  * "local_name" = packageName with the registry's prefix stripped - just a
  * lookup key, not part of the package's real identity.
@@ -96,13 +98,12 @@ class CatalogRegistry(
 
     private fun fetchAndBuild(packageName: String, localName: String, reference: PackageReference): ResolvedPackage {
         val packageDir = File(cacheDir, localName)
-        val ref = "v${reference.version}"
-        val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, ref, packageDir)
+        val fetched = GitPackageFetcher.fetch(packageName, reference.repoUrl, reference.ref, packageDir)
 
         require(fetched.version == reference.version) {
-            "Catalog \"$registryName\" claims \"$packageName\" $ref is version ${reference.version}, but its own " +
-                "openedge-project.json declares version ${fetched.version} instead - the catalog reference and " +
-                "the package's own manifest disagree."
+            "Catalog \"$registryName\" claims \"$packageName\" at ref \"${reference.ref}\" is version " +
+                "${reference.version} (from its filename), but its own openedge-project.json declares version " +
+                "${fetched.version} instead - the catalog reference and the package's own manifest disagree."
         }
 
         // installSubpath is this registry's own name, not its prefix - every package resolved from
@@ -116,7 +117,7 @@ class CatalogRegistry(
         if (!packageDir.isDirectory) return emptyList()
 
         val versionFiles = packageDir.listFiles { file -> file.isFile && file.extension == "json" }.orEmpty()
-        return versionFiles.map { readReference(it, localName) }
+        return versionFiles.map { readReference(it, it.nameWithoutExtension, localName) }
     }
 
     /** Every local_name this catalog has at least one version file for - for "did you mean X?" suggestions only. */
@@ -134,9 +135,9 @@ class CatalogRegistry(
         GitCli.run(null, "clone", "--branch", catalogRef, catalogUrl, catalogDir.path)
     }
 
-    private data class PackageReference(val repoUrl: String, val version: String)
+    private data class PackageReference(val version: String, val repoUrl: String, val ref: String)
 
-    private fun readReference(file: File, localName: String): PackageReference {
+    private fun readReference(file: File, version: String, localName: String): PackageReference {
         val json =
             try {
                 JSONObject(file.readText())
@@ -147,10 +148,10 @@ class CatalogRegistry(
         val repoUrl =
             json.optString("repoUrl").takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Catalog reference file ${file.path} is missing \"repoUrl\"")
-        val version =
-            json.optString("version").takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Catalog reference file ${file.path} is missing \"version\"")
+        val ref =
+            json.optString("ref").takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Catalog reference file ${file.path} is missing \"ref\"")
 
-        return PackageReference(repoUrl, version)
+        return PackageReference(version, repoUrl, ref)
     }
 }
