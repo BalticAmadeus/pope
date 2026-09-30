@@ -114,16 +114,18 @@ pope prune [--dry-run]                 remove pope_packages/ entries no longer d
 
 A registry is just a plain git repo, no server or tooling involved - one
 reference file per package version, at
-`packages/<name>/<version>.json`:
+`packages/<name>/<version>.json`. The **filename** is the version - the
+file's content just says where to fetch it from:
 ```json
 {
   "repoUrl": "https://github.com/yourorg/calculator.git",
-  "version": "1.0.0"
+  "ref": "v1.0.0"
 }
 ```
-The package repo itself must be tagged `v1.0.0` to match - the git tag
-pope fetches is always derived as `v<version>`, never stored separately.
-Create the repo, add that file, commit, push. That's the whole registry.
+`ref` is passed straight to git, so it can be anything git understands -
+a tag (as above), a branch name, or a raw commit SHA - it doesn't need
+to match the version number at all. Create the repo, add that file,
+commit, push. That's the whole registry.
 Publishing a new version means adding another `<version>.json` file, not
 replacing the old one (see "Multi-version registries" above). Then point
 a consumer project at it - see below.

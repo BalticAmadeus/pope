@@ -56,7 +56,7 @@ class CatalogRegistryTest {
             File(dir, "packages/$packageName").mkdirs()
             File(dir, "packages/$packageName/$version.json").writeText(
                 """
-                { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version" }
+                { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "ref": "v$version" }
                 """.trimIndent(),
             )
         }
@@ -112,6 +112,68 @@ class CatalogRegistryTest {
         val error = assertFailsWith<IllegalArgumentException> { registry.findAny("example.calculator") }
         assertTrue(error.message!!.contains("1.0.0"))
         assertTrue(error.message!!.contains("9.9.9"))
+    }
+
+    @Test
+    fun `a reference file missing ref fails loudly, no silent fallback to a default branch`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, emptyMap())
+        File(catalog, "packages/example.calculator").mkdirs()
+        File(catalog, "packages/example.calculator/1.0.0.json").writeText(
+            """{ "repoUrl": "${repo.absolutePath.replace("\\", "\\\\")}" }""",
+        )
+        git(catalog, "add", "-A")
+        git(catalog, "commit", "-m", "missing ref")
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val error = assertFailsWith<IllegalStateException> { registry(catalog, cacheDir).findAny("example.calculator") }
+        assertTrue(error.message!!.contains("\"ref\""))
+    }
+
+    @Test
+    fun `ref can be a plain branch name or a raw commit SHA, not just a v-prefixed tag`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val repo = packageRepoWithVersions(remotesRoot, "calculator-package", "example.calculator", listOf("1.0.0"))
+        // An extra commit on main, past the v1.0.0 tag, that 2.0.0 will point at directly - proving
+        // ref works for something that isn't a tag at all.
+        File(repo, "openedge-project.json").writeText(
+            """
+            {
+              "name": "calculator-package",
+              "version": "2.0.0",
+              "popePackageName": "example.calculator",
+              "popeDependencies": {},
+              "buildPath": [{ "type": "source", "path": "src" }]
+            }
+            """.trimIndent(),
+        )
+        commitAll(repo, "untagged bump to 2.0.0 on main")
+        val commitSha = git(repo, "rev-parse", "HEAD").trim()
+
+        val catalog = catalogRepo(remotesRoot, emptyMap())
+        addReference(catalog, "example.calculator", "1.0.0", repo, ref = "v1.0.0")
+        addReference(catalog, "example.calculator", "2.0.0", repo, ref = commitSha)
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        val resolved = registry(catalog, cacheDir).findAny("example.calculator")
+
+        assertEquals("2.0.0", resolved?.version)
+        assertTrue(File(cacheDir, "example.calculator/$commitSha/.git").exists())
+    }
+
+    @Test
+    fun `a non-semver filename produces a clear error when that package is queried`() {
+        val remotesRoot = createTempDirectory("pope-catalog-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "calculator-package", "example.calculator", "1.0.0")
+        val catalog = catalogRepo(remotesRoot, emptyMap())
+        // Two entries, not one - Kotlin's maxByOrNull skips calling the comparison selector at all
+        // for a single-element collection, so a lone bad filename wouldn't actually be compared.
+        addReference(catalog, "example.calculator", "1.0.0", repo)
+        addReference(catalog, "example.calculator", "latest", repo)
+
+        val cacheDir = createTempDirectory("pope-catalog-cache").toFile()
+        assertFailsWith<IllegalArgumentException> { registry(catalog, cacheDir).findAny("example.calculator") }
     }
 
     @Test
@@ -294,7 +356,7 @@ class CatalogRegistryTest {
         File(catalog, "packages/example.calculator/1.0.0.json").delete()
         File(catalog, "packages/example.calculator/2.0.0.json").writeText(
             """
-            { "repoUrl": "${calculatorRepoV1.absolutePath.replace("\\", "\\\\")}", "version": "2.0.0" }
+            { "repoUrl": "${calculatorRepoV1.absolutePath.replace("\\", "\\\\")}", "ref": "v2.0.0" }
             """.trimIndent(),
         )
         commitAll(catalog, "bump to 2.0.0")
@@ -331,11 +393,11 @@ class CatalogRegistryTest {
     }
 
     /** Writes (or overwrites) one catalog reference file, without touching any others already there. */
-    private fun addReference(catalog: File, localName: String, version: String, repoDir: File) {
+    private fun addReference(catalog: File, localName: String, version: String, repoDir: File, ref: String = "v$version") {
         File(catalog, "packages/$localName").mkdirs()
         File(catalog, "packages/$localName/$version.json").writeText(
             """
-            { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "version": "$version" }
+            { "repoUrl": "${repoDir.absolutePath.replace("\\", "\\\\")}", "ref": "$ref" }
             """.trimIndent(),
         )
         git(catalog, "add", "-A")
