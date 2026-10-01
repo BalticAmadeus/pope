@@ -490,11 +490,7 @@ class PopePlugin : Plugin<Project> {
                 val sourceRoot =
                     manifest.sourceRoots.firstOrNull()
                         ?: throw GradleException("No buildPath source entry to check popePackageName against.")
-                val inferred = PackageNameInferrer.infer(File(projectRoot, sourceRoot))
-                check(inferred == manifest.packageName) {
-                    "popePackageName (\"${manifest.packageName}\") disagrees with the real namespace found in " +
-                        ".cls files (\"$inferred\") - fix whichever one is wrong before publishing."
-                }
+                PackageNameInferrer.validateAgainstDeclared(File(projectRoot, sourceRoot), manifest.packageName)
 
                 val registry = buildRegistry(extension)
                 var pinnedCount = 0
