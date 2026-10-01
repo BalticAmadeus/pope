@@ -81,8 +81,18 @@ for %%I in ("%TARGET_DIR%") do set "ROOT_PROJECT_NAME=%%~nxI"
 
 :write_build_file
 if exist build.gradle.kts (
-    echo   build.gradle.kts already exists - left untouched. Needs
-    echo   id("io.github.balticamadeus.pope"^) version "%POPE_VERSION%" applied.
+    rem Rewrites the plugin version pin in place. Builds every quote char via
+    rem [char]34 so this -Command string never itself contains a literal double
+    rem quote - cmd.exe's own quote-balance parsing of the whole line would
+    rem otherwise break on one nested inside the already-quoted argument.
+    powershell -NoProfile -Command "$q=[char]34; $p='build.gradle.kts'; $c=Get-Content $p -Raw; $pat='id\(' + $q + 'io\.github\.balticamadeus\.pope' + $q + '\)\s+version\s+' + $q + '[^' + $q + ']+' + $q; if ($c -notmatch $pat) { exit 1 }; $rep='id(' + $q + 'io.github.balticamadeus.pope' + $q + ') version ' + $q + '%POPE_VERSION%' + $q; [regex]::Replace($c,$pat,{$rep}) | Set-Content -NoNewline $p; exit 0"
+    if !ERRORLEVEL!==0 (
+        echo   build.gradle.kts already exists - bumped the pope plugin version to "%POPE_VERSION%"
+    ) else (
+        echo   build.gradle.kts already exists, but its pope plugin line wasn't in the expected
+        echo   id("io.github.balticamadeus.pope"^) version "..." form - left untouched. Apply
+        echo   "%POPE_VERSION%" by hand.
+    )
     goto run_pope_init
 )
 (

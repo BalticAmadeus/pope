@@ -83,9 +83,15 @@ plugins {
     id("io.github.balticamadeus.pope") version "$POPE_VERSION"
 }
 EOF
+elif grep -qE 'id\("io\.github\.balticamadeus\.pope"\)[[:space:]]+version[[:space:]]+"[^"]+"' build.gradle.kts; then
+    # -i's in-place syntax differs between GNU and BSD/macOS sed - a temp file works on both.
+    sed -E "s/id\(\"io\.github\.balticamadeus\.pope\"\)[[:space:]]+version[[:space:]]+\"[^\"]+\"/id(\"io.github.balticamadeus.pope\") version \"$POPE_VERSION\"/" build.gradle.kts > build.gradle.kts.tmp
+    mv build.gradle.kts.tmp build.gradle.kts
+    echo "  build.gradle.kts already exists - bumped the pope plugin version to \"$POPE_VERSION\""
 else
-    echo "  build.gradle.kts already exists - left untouched. Needs"
-    echo "  id(\"io.github.balticamadeus.pope\") version \"$POPE_VERSION\" applied."
+    echo "  build.gradle.kts already exists, but its pope plugin line wasn't in the expected"
+    echo "  id(\"io.github.balticamadeus.pope\") version \"...\" form - left untouched. Apply"
+    echo "  \"$POPE_VERSION\" by hand."
 fi
 
 run_pope_init() {
