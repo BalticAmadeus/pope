@@ -701,9 +701,24 @@ private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
     var current = dir
     while (current.absolutePath != stopAt.absolutePath && current.isDirectory && current.listFiles().isNullOrEmpty()) {
         val parent = current.parentFile
-        current.delete()
+        if (!deleteWithRetry(current)) break
         current = parent
     }
+}
+
+/**
+ * Retries a directory delete a few times before giving up - on Windows, a delete right after this
+ * same run just emptied the directory can transiently fail (antivirus/indexer/Explorer briefly
+ * holding it open) even though nothing is actually still using it a moment later. Gives up silently
+ * on persistent failure, same as before - a leftover empty directory is harmless, so this must never
+ * throw or block the task over it.
+ */
+private fun deleteWithRetry(dir: File, attempts: Int = 5, delayMillis: Long = 50): Boolean {
+    repeat(attempts) { attempt ->
+        if (dir.delete()) return true
+        if (attempt < attempts - 1) Thread.sleep(delayMillis)
+    }
+    return false
 }
 
 /**
