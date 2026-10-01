@@ -1839,4 +1839,144 @@ class PopePluginFunctionalTest {
             "Expected greeter's trust approval to survive uninstalling an unrelated package",
         )
     }
+
+    // --- popePrepare ---
+
+    /** A standalone package project (what's being prepared), not a consumer - no settings.gradle.kts root needed beyond its own. */
+    private fun buildPackageProject(
+        registriesBuildSnippet: String,
+        cacheDir: File,
+        dependencies: JSONObject,
+        packageName: String = "example.consumer",
+        className: String = "Consumer",
+    ): File {
+        val projectDir = createTempDirectory("pope-functional-test-prepare-project").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "prepare-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+                $registriesBuildSnippet
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "prepare-fixture")
+                .put("version", "1.0.0")
+                .put("popePackageName", packageName)
+                .put("popeDependencies", dependencies)
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        val classDir = File(projectDir, "src/${packageName.replace('.', '/')}")
+        classDir.mkdirs()
+        File(classDir, "$className.cls").writeText("class $packageName.$className:\nend class.")
+        return projectDir
+    }
+
+    @Test
+    fun `popePrepare pins a registry-style dependency to its real repoUrl and ref, leaving an existing DirectSource one alone`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-prepare-remotes").toFile()
+        val calculatorRepo = gitPackageRepo(remotesRoot, "calculator-repo", "calculator", "1.0.0")
+        val greeterRepo = gitPackageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.0")
+
+        val catalogDir = File(remotesRoot, "catalog")
+        catalogDir.mkdirs()
+        git(catalogDir, "init", "-b", "main")
+        git(catalogDir, "config", "user.email", "pope-test@example.com")
+        git(catalogDir, "config", "user.name", "pope test")
+        addCatalogReference(catalogDir, "calculator", "1.0.0", calculatorRepo, "v1.0.0")
+
+        val cacheDir = createTempDirectory("pope-functional-test-prepare-cache").toFile()
+        val dependencies =
+            JSONObject()
+                .put("ba.calculator", "^1.0.0")
+                .put(
+                    "greeter",
+                    JSONObject().put("repoUrl", greeterRepo.absolutePath.replace("\\", "/")).put("ref", "v1.0.0"),
+                )
+        val projectDir =
+            buildPackageProject(
+                """
+                registries {
+                    create("registry-ba") {
+                        prefix.set("ba.")
+                        catalogUrl.set("${catalogDir.absolutePath.replace("\\", "/")}")
+                    }
+                }
+                """.trimIndent(),
+                cacheDir,
+                dependencies,
+            )
+
+        val result = run(projectDir, "popePrepare")
+
+        assertTrue(
+            result.output.contains("pinned \"ba.calculator\""),
+            "Expected popePrepare to report pinning the registry-style dependency, got:\n${result.output}",
+        )
+        val updatedDependencies = JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("popeDependencies")
+        val pinnedCalculator = updatedDependencies.getJSONObject("ba.calculator")
+        assertEquals(calculatorRepo.absolutePath.replace("\\", "/"), pinnedCalculator.getString("repoUrl"))
+        assertEquals("v1.0.0", pinnedCalculator.getString("ref"))
+
+        // Already-DirectSource dependency left exactly as it was.
+        val untouchedGreeter = updatedDependencies.getJSONObject("greeter")
+        assertEquals(greeterRepo.absolutePath.replace("\\", "/"), untouchedGreeter.getString("repoUrl"))
+        assertEquals("v1.0.0", untouchedGreeter.getString("ref"))
+    }
+
+    @Test
+    fun `popePrepare fails loudly when popePackageName disagrees with the real cls namespace`() {
+        val cacheDir = createTempDirectory("pope-functional-test-prepare-mismatch-cache").toFile()
+        val projectDir =
+            buildPackageProject(
+                "",
+                cacheDir,
+                JSONObject(),
+                packageName = "wrong.name",
+            )
+        // The .cls file was written under src/wrong/name/ declaring "wrong.name" - rewrite it to
+        // declare a different namespace than popePackageName says, to simulate the real mismatch found.
+        File(projectDir, "src/wrong/name/Consumer.cls").delete()
+        val realClassDir = File(projectDir, "src/real/namespace").apply { mkdirs() }
+        File(realClassDir, "Consumer.cls").writeText("class real.namespace.Consumer:\nend class.")
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popePrepare")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("popePackageName") && result.output.contains("real.namespace"),
+            "Expected a clear namespace-mismatch failure naming both sides, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `popePrepare adds dev-only files to gitignore without disturbing existing entries`() {
+        val cacheDir = createTempDirectory("pope-functional-test-prepare-gitignore-cache").toFile()
+        val projectDir = buildPackageProject("", cacheDir, JSONObject())
+        File(projectDir, ".gitignore").writeText("some-existing-entry/\n")
+
+        run(projectDir, "popePrepare")
+
+        val gitignoreLines = File(projectDir, ".gitignore").readLines().map { it.trim() }.toSet()
+        assertTrue(
+            gitignoreLines.containsAll(
+                listOf(
+                    "some-existing-entry/", "gradlew", "gradlew.bat", "gradle/", "build.gradle.kts",
+                    "settings.gradle.kts", "pope", "pope.bat", "pope.lock", "pope-registries.properties",
+                ),
+            ),
+            "Expected the pre-existing entry to survive and every dev-only file to be added, got: $gitignoreLines",
+        )
+    }
 }

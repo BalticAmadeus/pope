@@ -88,7 +88,20 @@ The entry point. Everything starts here.
     the graph, rather than dropping them all.
   - **`popeRegistryAdd`** — appends one entry to
     `pope-registries.properties` via `RegistriesPropertiesFile.add`.
+  - **`popePrepare`** — gets a package ready to publish: infers the real
+    namespace from `.cls` files via `PackageNameInferrer` and fails loudly
+    if it disagrees with `popePackageName`; re-resolves every
+    `DependencySpec.Registry` entry in the manifest's own
+    `popeDependencies` and rewrites it to `DirectSource` via
+    `DependenciesUpdater.pinToDirectSource` (using the `repoUrl`/`ref`
+    `GitPackageFetcher.fetch` now stamps onto every `ResolvedPackage`);
+    adds dev-only files (`gradlew`, `build.gradle.kts`,
+    `pope-registries.properties`, etc.) to `.gitignore` via
+    `ensureGitignoreEntries`. Never touches git or `"version"`.
 - **Private helper functions at the bottom of the file:**
+  - `ensureGitignoreEntries(projectRoot, entries, logger)` — appends only
+    the entries missing from `.gitignore` (creating it if needed); shared
+    by `popeInit` and `popePrepare`.
   - `buildRegistry(extension)` — merges `registries { }` (from the build
     script) and `pope-registries.properties` (from the CLI) into a single
     `PrefixRoutingRegistry`. A prefix *or* a name declared twice, in either

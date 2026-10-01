@@ -78,6 +78,27 @@ class DependenciesUpdaterTest {
     }
 
     @Test
+    fun `pins a registry-style dependency to a DirectSource object`() {
+        val file = manifestWithDependencies("""{"example.calculator": "^1.0.0"}""")
+
+        DependenciesUpdater.pinToDirectSource(file, "example.calculator", "https://example.com/calculator.git", "v1.0.0")
+
+        val dependency = JSONObject(file.readText()).getJSONObject("popeDependencies").getJSONObject("example.calculator")
+        assertEquals("https://example.com/calculator.git", dependency.getString("repoUrl"))
+        assertEquals("v1.0.0", dependency.getString("ref"))
+    }
+
+    @Test
+    fun `pinning a dependency leaves other entries untouched`() {
+        val file = manifestWithDependencies("""{"example.calculator": "^1.0.0", "example.greeter": "^2.0.0"}""")
+
+        DependenciesUpdater.pinToDirectSource(file, "example.calculator", "https://example.com/calculator.git", "v1.0.0")
+
+        val dependencies = JSONObject(file.readText()).getJSONObject("popeDependencies")
+        assertEquals("^2.0.0", dependencies.getString("example.greeter"))
+    }
+
+    @Test
     fun `adding a dependency that didn't exist yet places the key right after version`() {
         val file = createTempFile(suffix = ".json").toFile()
         file.writeText(

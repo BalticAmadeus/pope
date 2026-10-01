@@ -45,6 +45,8 @@ object GitPackageFetcher {
             version = manifest.version,
             sourceDir = File(worktreeDir, packageRoot),
             projectDir = worktreeDir,
+            repoUrl = repoUrl,
+            ref = ref,
         )
     }
 
