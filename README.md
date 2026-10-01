@@ -100,6 +100,7 @@ pope uninstall <package>               remove a dependency and clean up its file
 pope propath [--tests]                 print the generated PROPATH
 pope registry add [<prefix> <url>]     add a registry (interactive if omitted)
 pope prune [--dry-run]                 remove pope_packages/ entries no longer declared
+pope prepare                           get this package ready to publish
 ```
 
 ## Creating a registry
@@ -147,9 +148,18 @@ ABL requirement, not a pope one. Fold your org into `popePackageName`/the
 namespace (e.g. `yourorg.yourpackage`, not bare `yourpackage`) so it
 doesn't collide with someone else's package of the same name - pope
 doesn't enforce this itself, it only catches an actual collision at
-resolve time (see "PROPATH namespace-collision detection" above). Tag
-the repo (`git tag v1.0.0`) matching whatever `ref` a registry's
-reference file points at.
+resolve time (see "PROPATH namespace-collision detection" above).
+
+Before tagging, run `pope prepare` from the package's own checkout -
+it pins any registry-style `popeDependencies` entries to their real
+`{repoUrl, ref}` (a dependency written as a registry caret-range only
+resolves for a consumer who happens to have that same registry
+configured), adds dev-only files (`gradlew`, `build.gradle.kts`,
+`pope-registries.properties`, etc.) to `.gitignore`, and fails loudly if
+`popePackageName` disagrees with the real namespace found in `.cls`
+files. It never touches git or the `"version"` field - tag the repo
+(`git tag v1.0.0`) matching whatever `ref` a registry's reference file
+points at, and push, yourself.
 
 ## Remote registries
 

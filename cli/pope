@@ -75,6 +75,8 @@ usage() {
     echo "                                          (interactive if prefix/url are omitted)"
     echo "  pope prune [--dry-run]                 remove pope_packages/ entries no longer part of"
     echo "                                          the resolved dependency graph"
+    echo "  pope prepare                           get this package ready to publish (pins dependencies,"
+    echo "                                          gitignores dev-only files, checks popePackageName)"
     exit 1
 }
 
@@ -141,6 +143,10 @@ case "$command" in
         else
             usage
         fi
+        ;;
+    prepare)
+        [ "$#" -eq 0 ] || usage
+        run_gradle popePrepare
         ;;
     *)
         usage
