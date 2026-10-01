@@ -20,6 +20,8 @@ data class ResolvedPackage(
     val installSubpath: String? = null,
     val installLayout: InstallLayout = InstallLayout.Isolated,
     val popeToolVersion: String? = null,
+    val repoUrl: String? = null,
+    val ref: String? = null,
 )
 
 interface Registry {

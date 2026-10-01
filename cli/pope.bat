@@ -136,6 +136,12 @@ if /I "%COMMAND%"=="prune" (
     goto :eof
 )
 
+if /I "%COMMAND%"=="prepare" (
+    if not "%~2"=="" goto usage
+    call :run_gradle popePrepare
+    goto :eof
+)
+
 goto usage
 
 :run_gradle
@@ -159,4 +165,6 @@ echo   pope registry add [^<prefix^> ^<url^> [^<name^>]]  add a registry to pope
 echo                                          (interactive if prefix/url are omitted)
 echo   pope prune [--dry-run]                 remove pope_packages/ entries no longer part of
 echo                                          the resolved dependency graph
+echo   pope prepare                           get this package ready to publish (pins dependencies,
+echo                                          gitignores dev-only files, checks popePackageName)
 exit /b 1

@@ -13,6 +13,14 @@ object DependenciesUpdater {
         ManifestWriter.write(manifestFile, json)
     }
 
+    fun pinToDirectSource(manifestFile: File, packageName: String, repoUrl: String, ref: String) {
+        val json = JSONObject(manifestFile.readText())
+        val dependencies = json.optJSONObject("popeDependencies") ?: JSONObject()
+        dependencies.put(packageName, JSONObject().put("repoUrl", repoUrl).put("ref", ref))
+        json.put("popeDependencies", dependencies)
+        ManifestWriter.write(manifestFile, json)
+    }
+
     fun removeDependency(manifestFile: File, packageName: String) {
         val json = JSONObject(manifestFile.readText())
         val dependencies = json.optJSONObject("popeDependencies") ?: JSONObject()

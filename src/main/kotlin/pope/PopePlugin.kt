@@ -32,6 +32,7 @@ import org.gradle.api.Project
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.tasks.userinput.UserInputHandler
+import org.gradle.api.logging.Logger
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.json.JSONArray
@@ -461,29 +462,69 @@ class PopePlugin : Plugin<Project> {
                     ManifestWriter.write(manifestFile, json) // written either way - also refreshes popeToolVersion
                 }
 
-                val gitignoreFile = File(projectRoot, ".gitignore")
-                val gitignoreEntries = listOf("pope_packages/", ".gradle/")
-                val existingGitignoreLines =
-                    if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()
-                val missingGitignoreEntries = gitignoreEntries.filter { it !in existingGitignoreLines }
-                if (missingGitignoreEntries.isNotEmpty()) {
-                    if (!gitignoreFile.exists()) {
-                        gitignoreFile.writeText(missingGitignoreEntries.joinToString("\n", postfix = "\n"))
-                        project.logger.lifecycle("  + generated .gitignore (${missingGitignoreEntries.joinToString(", ")})")
-                    } else {
-                        val needsLeadingNewline =
-                            gitignoreFile.length() > 0 && !gitignoreFile.readText().endsWith("\n")
-                        gitignoreFile.appendText(
-                            (if (needsLeadingNewline) "\n" else "") + missingGitignoreEntries.joinToString("\n", postfix = "\n"),
-                        )
-                        project.logger.lifecycle("  + added ${missingGitignoreEntries.joinToString(", ")} to .gitignore")
-                    }
-                }
+                ensureGitignoreEntries(projectRoot, listOf("pope_packages/", ".gradle/"), project.logger)
 
                 project.logger.lifecycle("")
                 project.logger.lifecycle("pope wiring is set up at ${projectRoot.path}")
                 project.logger.lifecycle("  - add a registry: pope registry add <prefix> <url> (writes pope-registries.properties)")
                 project.logger.lifecycle("  - pope install <package_name>")
+            }
+        }
+
+        project.tasks.register("popePrepare") { task ->
+            task.group = "pope"
+            task.description =
+                "Gets a package ready to publish: pins registry-style dependencies to their real " +
+                "{repoUrl, ref}, gitignores dev-only files, and fails loudly if popePackageName " +
+                "disagrees with the real .cls namespace. Never touches git or the \"version\" field."
+            task.doLast {
+                project.logger.lifecycle("=== pope prepare ===")
+                project.logger.lifecycle("")
+
+                val projectRoot = extension.projectRoot.get().asFile
+                val manifestFile = projectRoot.resolve("openedge-project.json")
+                require(manifestFile.exists()) { "No openedge-project.json found at ${projectRoot.path}" }
+                val manifest = ManifestReader.read(manifestFile)
+
+                // Fail loudly, don't auto-fix - either side (declared name or real namespace) could be the mistake.
+                val sourceRoot =
+                    manifest.sourceRoots.firstOrNull()
+                        ?: throw GradleException("No buildPath source entry to check popePackageName against.")
+                val inferred = PackageNameInferrer.infer(File(projectRoot, sourceRoot))
+                check(inferred == manifest.packageName) {
+                    "popePackageName (\"${manifest.packageName}\") disagrees with the real namespace found in " +
+                        ".cls files (\"$inferred\") - fix whichever one is wrong before publishing."
+                }
+
+                val registry = buildRegistry(extension)
+                var pinnedCount = 0
+                for ((packageKey, spec) in manifest.dependencies) {
+                    if (spec is DependencySpec.Registry) {
+                        val resolved = registry.resolve(packageKey, spec.versionSpec)
+                        val repoUrl =
+                            requireNotNull(resolved.repoUrl) {
+                                "\"$packageKey\" resolved with no real git repo URL (e.g. a local-directory " +
+                                    "fallback registry) - can't pin it to a portable dependency."
+                            }
+                        val ref = requireNotNull(resolved.ref)
+                        DependenciesUpdater.pinToDirectSource(manifestFile, packageKey, repoUrl, ref)
+                        project.logger.lifecycle("  ~ pinned \"$packageKey\" to $repoUrl@$ref")
+                        pinnedCount++
+                    }
+                }
+                if (pinnedCount == 0) project.logger.lifecycle("  no registry-style dependencies to pin")
+
+                ensureGitignoreEntries(
+                    projectRoot,
+                    listOf(
+                        "gradlew", "gradlew.bat", "gradle/", "build.gradle.kts", "settings.gradle.kts",
+                        "pope", "pope.bat", "pope.lock", "pope-registries.properties",
+                    ),
+                    project.logger,
+                )
+
+                project.logger.lifecycle("")
+                project.logger.lifecycle("ready to publish - bump \"version\", tag, and push when you are")
             }
         }
 
@@ -575,6 +616,23 @@ private fun buildRegistry(extension: PopeExtension): Registry {
     }
 
     return PrefixRoutingRegistry(entries)
+}
+
+/** Appends any of entries missing from .gitignore (creating it if needed) - never removes/reorders existing lines. */
+private fun ensureGitignoreEntries(projectRoot: File, entries: List<String>, logger: Logger) {
+    val gitignoreFile = File(projectRoot, ".gitignore")
+    val existing = if (gitignoreFile.exists()) gitignoreFile.readLines().map { it.trim() }.toSet() else emptySet()
+    val missing = entries.filter { it !in existing }
+    if (missing.isEmpty()) return
+
+    if (!gitignoreFile.exists()) {
+        gitignoreFile.writeText(missing.joinToString("\n", postfix = "\n"))
+        logger.lifecycle("  + generated .gitignore (${missing.joinToString(", ")})")
+    } else {
+        val needsLeadingNewline = gitignoreFile.length() > 0 && !gitignoreFile.readText().endsWith("\n")
+        gitignoreFile.appendText((if (needsLeadingNewline) "\n" else "") + missing.joinToString("\n", postfix = "\n"))
+        logger.lifecycle("  + added ${missing.joinToString(", ")} to .gitignore")
+    }
 }
 
 /** The buildPath source entry for a resolved package - one per registry (shared), or one per package (isolated). */
