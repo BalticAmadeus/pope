@@ -11,58 +11,6 @@ This repo is just the plugin. The demo/consumer app and the registries/
 packages it depends on live in their own separate repos - see "Remote
 registries" below.
 
-## Status
-
-The core loop works end to end, against real, remote, git-hosted
-registries:
-
-- **Multi-registry, prefix-routed resolution** - any number of registries,
-  each with its own routing prefix (e.g. `ba.`, `cw.`).
-- **Catalog-based registries** - a registry is a small git repo holding
-  only reference files, no package content. Fetches through a
-  bare-clone-plus-`git worktree` cache, so repeat fetches are local.
-  Every package from a registry shares one `pope_packages/<registryName>/`
-  folder; direct-source dependencies share `pope_packages/dependencies/`.
-- **Multi-version registries** - a package's catalog folder can hold any
-  number of version files; install picks the highest one satisfying the
-  caret range.
-- **Direct-source dependencies** - a package can depend on another by
-  inline `{repoUrl, ref}`, no registry involved.
-- **Transitive resolution** with version-conflict detection across the
-  whole graph, and **PROPATH namespace-collision detection** (two
-  packages sharing a real ABL namespace fail loudly instead of silently
-  shadowing each other).
-- **Integrity verification** - `pope.lock` records a content hash per
-  package; a tag force-moved to different content fails loudly.
-- **Tool-version compatibility check** - every manifest pope writes gets
-  stamped with `popeToolVersion`; `pope install` warns (doesn't fail) if
-  a resolved dependency's major version differs from the one currently
-  running. `pope version` prints your own installed version; the
-  `popeStamp` Gradle task (`gradlew popeStamp`, no `pope` CLI shortcut)
-  refreshes the stamp on a package with no Gradle wiring of its own, e.g.
-  a leaf dependency - point a separate project's `pope.projectRoot` at
-  it and run the task from there.
-- **`buildPath` test entries** - `type: "test"` is excluded from PROPATH
-  by default, included with `pope propath --tests`. Never leaks from a
-  dependency into a consumer.
-- **`pope prune [--dry-run]`** - removes `pope_packages/`/`buildPath`
-  entries no longer part of the resolved graph.
-- **`pope uninstall <package>`** - removes a dependency and cleans up its
-  `pope_packages/`/`pope.lock`/`buildPath` entries in one step. A bare
-  local name works too if it matches exactly one declared dependency, and
-  a typo gets a "did you mean X?" prompt against your declared dependencies.
-- **Bare-name install** - `pope install <name>` with no registry given
-  searches every configured registry; auto-installs on one match, prompts
-  to choose on several. Typos get a "did you mean X?" prompt too.
-- Backward compatible: no `registries {}` configured falls back to a
-  plain local-directory registry.
-
-See `docs/decisions/` for what's been decided and why. Still missing:
-include-collision linting, and real Gradle/Ivy-based resolution - version
-matching (`pope/version/`) and graph resolution (`pope/resolver/`) are
-hand-written instead, a known deviation from ADR-0001 worth raising with
-the team before treating as settled.
-
 ## Per-machine setup
 
 No clone needed - pope is resolved by version from its published Maven
@@ -72,9 +20,9 @@ Gradle plugin is.
 1. **Wire up your ABL project** - download `pope-init` (`pope-init.bat`
    on Windows) once, from
    [github.com/BalticAmadeus/pope](https://github.com/BalticAmadeus/pope),
-   and run it from your project's own directory:
+   and then you can run it from your every project's own directory that you want to wire up:
    ```
-   ./pope-init <version>      # e.g. ./pope-init 1.2.0
+   path-to-file/pope-init [<version>]      # path-to-file\pope-init.bat on Windows
    ```
    It writes the Gradle wrapper, `settings.gradle.kts`, and
    `build.gradle.kts` (pointed at the published plugin), then lets
@@ -84,18 +32,16 @@ Gradle plugin is.
    `docs/spec/kotlin-gradle-files.md` for what it actually does.
 2. **(Optional) Install the global CLI**, so `pope install`/`uninstall`/
    `propath`/`prune`/`registry add` work from any project without a
-   `./`/`.\` prefix - `pope-init` offers to do this for you, or run it
-   directly:
+   `./`/`.\` prefix. `pope-init` offers this already - said no, or want
+   it later? Run it directly:
    ```
-   cli/install.sh      # cli\install.ps1 on Windows
+   ~/.pope/cli/install.sh      # %USERPROFILE%.pope\cli\install.ps1 on Windows
    ```
-   One-time, idempotent. Open a new terminal afterward for `PATH` to
-   apply. This is `cli/pope`, **not** the per-project `pope`/`pope.bat` -
-   the per-project one finds its target by its own file location (works
-   with zero global setup, e.g. in CI); `cli/pope` finds its target by
-   walking up from your current directory, which is what makes it safe
-   to put on `PATH`. Don't put a per-project copy on `PATH` instead - it
-   would silently operate on wherever that file happens to live.
+   One-time, idempotent; open a new terminal after. This is the global
+   `cli/pope`, not the per-project `pope`/`pope.bat`: it finds its
+   target project by walking up from your current directory (safe to
+   put on PATH), while the per-project copy is tied to its own file
+   location instead (zero-setup, e.g. in CI).
 
 ### Commands
 
@@ -151,72 +97,96 @@ your-package/
   "buildPath": [{ "type": "source", "path": "src" }]
 }
 ```
-You don't need to type a `popeToolVersion` field yourself - it's
-auto-stamped the first time any pope command writes this file
-(`pope-init`, adding a dependency, etc.), and used later to warn a
-consumer if their pope is a different major version than whatever wrote
-this manifest. A brand new, hand-authored file like the one above just
-won't have it yet, which is fine - a package that never runs any pope
-command against its own repo (a plain leaf package with nothing else to
-manage) simply never gets this benefit, and that's an acceptable
-trade-off, not an error. If you want the check anyway without running
-pope in your package's own repo at all, either write the field in by
-hand, or run the `popeStamp` Gradle task from a *separate* project with
-`pope.projectRoot` pointed at your package's checkout - see the
-"Tool-version compatibility check" bullet under "Status" above.
+Run `pope-init` (or `pope-init.bat` on Windows) inside the package's own
+directory to generate/patch `openedge-project.json`, which looks like this:
+```json
+{
+  "name": "your-package",
+  "version": "1.0.0",
+  "popePackageName": "yourorg.yourpackage",
+  "popeDependencies": {},
+  "buildPath": [{ "type": "source", "path": "src" }],
+  "popeToolVersion": "1.2.0"
+}
+```
+Fold your org into
+`popePackageName`/the namespace (e.g. `yourorg.yourpackage`, not bare
+`yourpackage`) so it doesn't collide with someone else's package of the
+same name - pope only catches an actual collision at resolve time (see
+"PROPATH namespace-collision detection" above).
 
-The folder structure under `src/` must mirror the class namespace - an
-ABL requirement, not a pope one. Fold your org into `popePackageName`/the
-namespace (e.g. `yourorg.yourpackage`, not bare `yourpackage`) so it
-doesn't collide with someone else's package of the same name - pope
-doesn't enforce this itself, it only catches an actual collision at
-resolve time (see "PROPATH namespace-collision detection" above).
-
-Before tagging, run `pope prepare` from the package's own checkout -
-it pins any registry-style `popeDependencies` entries to their real
-`{repoUrl, ref}` (a dependency written as a registry caret-range only
-resolves for a consumer who happens to have that same registry
-configured), adds dev-only files (`gradlew`, `build.gradle.kts`,
-`pope-registries.properties`, etc.) to `.gitignore`, and fails loudly if
-`popePackageName` disagrees with the real namespace found in `.cls`
-files. It never touches git or the `"version"` field - tag the repo
-(`git tag v1.0.0`) matching whatever `ref` a registry's reference file
-points at, and push, yourself.
+Before tagging, run `pope prepare` (global CLI) or `./gradlew
+popePrepare` from the package's own checkout - it pins any
+registry-style `popeDependencies` entries to their real `{repoUrl, ref}`
+(a caret-range dependency only resolves for a consumer who happens to
+have that same registry configured), refreshes `popeToolVersion`,
+gitignores dev-only files, and fails loudly if `popePackageName`
+disagrees with the real namespace in `.cls` files. It never touches git
+or `"version"` - tag (`git tag v1.0.0`) and push yourself.
 
 ## Remote registries
 
-Two mergeable config sources - a prefix declared in both, or twice in
-one, is a duplicate-prefix error.
-
-**`pope-registries.properties`** (project root, committed, CLI-mutable):
-```
-Paulius.prefix=Paulius.
-Paulius.catalogUrl=https://github.com/PauliusKu/Registry
-```
-Add to it with `pope registry add [<prefix> <url> [<name>]]` (interactive
-if omitted).
-
-**`registries {}`** in `build.gradle.kts` (hand-authored):
-```kotlin
-pope {
-    registries {
-        create("Paulius") {
-            prefix.set("Paulius.")
-            catalogUrl.set("https://github.com/PauliusKu/Registry")
-        }
-    }
-}
-```
-
-A dependency like `"Paulius.Util": "^0.0.1"` routes to whichever
-registry's prefix it starts with. You can also install by the registry's
-own name plus its local name, e.g. `pope install Paulius/Util` -
-or just `pope install Util` and let pope search every registry for
-it. See
+A registry maps a prefix to a catalog repo, so a dependency like
+`"Paulius.Util": "^0.0.1"` resolves without a full `{repoUrl, ref}`.
+Add one with `pope registry add [<prefix> <url> [<name>]]` (interactive
+if omitted) - writes to `pope-registries.properties` at the project
+root (committed, mergeable with any registries declared in
+`build.gradle.kts` instead; a prefix declared in both is a
+duplicate-prefix error). Then install by prefixed name
+(`pope install Paulius/Util`) or let pope search every registry
+(`pope install Util`). See
 [Registry](https://github.com/PauliusKu/Registry) for a real catalog
-registry, and the packages it references (e.g.
-[Util](https://github.com/PauliusKu/Util)) for what a
-resolvable package repo looks like. If neither source has any entries,
-`popeInstall` falls back to a plain local-directory registry
-(`registryRoot`).
+registry, and [Util](https://github.com/PauliusKu/Util) for what a
+resolvable package looks like.
 
+## Status
+
+The core loop works end to end, against real, remote, git-hosted
+registries:
+
+- **Multi-registry, prefix-routed resolution** - any number of registries,
+  each with its own routing prefix (e.g. `ba.`, `cw.`).
+- **Catalog-based registries** - a registry is a small git repo holding
+  only reference files, no package content. Fetches through a
+  bare-clone-plus-`git worktree` cache, so repeat fetches are local.
+  Every package from a registry shares one `pope_packages/<registryName>/`
+  folder; direct-source dependencies share `pope_packages/dependencies/`.
+- **Multi-version registries** - a package's catalog folder can hold any
+  number of version files; install picks the highest one satisfying the
+  caret range.
+- **Direct-source dependencies** - a package can depend on another by
+  inline `{repoUrl, ref}`, no registry involved.
+- **Transitive resolution** with version-conflict detection across the
+  whole graph, and **PROPATH namespace-collision detection** (two
+  packages sharing a real ABL namespace fail loudly instead of silently
+  shadowing each other).
+- **Integrity verification** - `pope.lock` records a content hash per
+  package; a tag force-moved to different content fails loudly.
+- **Tool-version compatibility check** - every manifest pope writes gets
+  stamped with `popeToolVersion`; `pope install` warns (doesn't fail) if
+  a resolved dependency's major version differs from the one currently
+  running. `pope version` prints your own installed version; the
+  `popeStamp` Gradle task (`gradlew popeStamp`, no `pope` CLI shortcut)
+  refreshes the stamp on a package with no Gradle wiring of its own, e.g.
+  a leaf dependency - point a separate project's `pope.projectRoot` at
+  it and run the task from there.
+- **`buildPath` test entries** - `type: "test"` is excluded from PROPATH
+  by default, included with `pope propath --tests`. Never leaks from a
+  dependency into a consumer.
+- **`pope prune [--dry-run]`** - removes `pope_packages/`/`buildPath`
+  entries no longer part of the resolved graph.
+- **`pope uninstall <package>`** - removes a dependency and cleans up its
+  `pope_packages/`/`pope.lock`/`buildPath` entries in one step. A bare
+  local name works too if it matches exactly one declared dependency, and
+  a typo gets a "did you mean X?" prompt against your declared dependencies.
+- **Bare-name install** - `pope install <name>` with no registry given
+  searches every configured registry; auto-installs on one match, prompts
+  to choose on several. Typos get a "did you mean X?" prompt too.
+- Backward compatible: no `registries {}` configured falls back to a
+  plain local-directory registry.
+
+See `docs/decisions/` for what's been decided and why. Still missing:
+include-collision linting, and real Gradle/Ivy-based resolution - version
+matching (`pope/version/`) and graph resolution (`pope/resolver/`) are
+hand-written instead, a known deviation from ADR-0001 worth raising with
+the team before treating as settled.
