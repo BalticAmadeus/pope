@@ -298,7 +298,7 @@ class PopePlugin : Plugin<Project> {
                     val popePackagesDir = projectRoot.resolve("pope_packages")
                     stalePackageKeys.forEach { packageKey ->
                         val affectedDirs = deleteInstalledPackage(popePackagesDir, packageKey, existingLock.getValue(packageKey))
-                        affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
+                        affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir, sweepLeaf = true) }
                     }
                 }
                 val staleBuildPathPaths = BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths, dryRun)
@@ -360,7 +360,7 @@ class PopePlugin : Plugin<Project> {
                 val staleKeys = existingLock.keys - resolvedPackages.keys
                 staleKeys.forEach { staleKey ->
                     val affectedDirs = deleteInstalledPackage(popePackagesDir, staleKey, existingLock.getValue(staleKey))
-                    affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir) }
+                    affectedDirs.forEach { removeNowEmptyAncestors(it, popePackagesDir, sweepLeaf = true) }
                 }
                 BuildPathUpdater.pruneStalePopePackagesEntries(manifestFile, expectedPaths)
                 DependenciesUpdater.removeDependency(manifestFile, packageName)
@@ -696,26 +696,44 @@ private fun deleteInstalledPackage(popePackagesDir: File, packageKey: String, lo
         .toSet()
 }
 
-/** Deletes now-empty ancestor dirs (e.g. an emptied-out registry-prefix folder), stopping at stopAt or the first non-empty one. */
-private fun removeNowEmptyAncestors(dir: File, stopAt: File) {
+/**
+ * Deletes now-empty ancestor dirs (e.g. an emptied-out registry-prefix folder), stopping at stopAt
+ * or the first dir still needed by something else. sweepLeaf controls how the first, leaf-most dir
+ * (the immediate parent of files just deleted) is handled - see sweepLeafDir's doc for when that's
+ * safe. Every dir above the leaf is always a plain, strict check-and-delete: it's either genuinely
+ * empty (proceeds) or still holds a real sibling's files (stops immediately), since only the leaf
+ * can be assumed to belong exclusively to what was just removed.
+ */
+private fun removeNowEmptyAncestors(dir: File, stopAt: File, sweepLeaf: Boolean = false) {
     var current = dir
-    while (current.absolutePath != stopAt.absolutePath && current.isDirectory && current.listFiles().isNullOrEmpty()) {
+    var isLeafLevel = true
+    while (current.absolutePath != stopAt.absolutePath && current.isDirectory) {
         val parent = current.parentFile
-        if (!deleteWithRetry(current)) break
+        val deleted =
+            if (isLeafLevel && sweepLeaf) sweepLeafDir(current) else current.listFiles().isNullOrEmpty() && current.delete()
+        isLeafLevel = false
+        if (!deleted) break
         current = parent
     }
 }
 
 /**
- * Retries a directory delete a few times before giving up - on Windows, a delete right after this
- * same run just emptied the directory can transiently fail (antivirus/indexer/Explorer briefly
- * holding it open) even though nothing is actually still using it a moment later. Gives up silently
- * on persistent failure, same as before - a leftover empty directory is harmless, so this must never
- * throw or block the task over it.
+ * Deletes a directory wholesale (deleteRecursively, not a strict empty check) - only safe to call
+ * with sweepLeaf=true, i.e. when the WHOLE package that owned this directory is being removed (see
+ * deleteInstalledPackage's callers), never during installPackage's own stale-file diffing, where a
+ * leaf dir can still hold OTHER, still-current files from the same package. In the whole-package
+ * case, this directory is never shared with a sibling package either (two packages sharing one
+ * literal subpath would already be a PROPATH namespace collision pope detects elsewhere), so
+ * anything left in it belongs only to the package being removed - in practice, usually a .r file an
+ * ABL language server compiled from a .cls pope just deleted (a build byproduct pope never tracked
+ * and so never deletes directly, but one that's exactly as safe to remove as the source it came
+ * from). Retries briefly in case something is mid-write to a file in here at the exact moment of
+ * deletion; gives up silently on persistent failure (a leftover directory is harmless) rather than
+ * ever blocking the task over it.
  */
-private fun deleteWithRetry(dir: File, attempts: Int = 5, delayMillis: Long = 50): Boolean {
+private fun sweepLeafDir(dir: File, attempts: Int = 5, delayMillis: Long = 100): Boolean {
     repeat(attempts) { attempt ->
-        if (dir.delete()) return true
+        if (dir.deleteRecursively()) return true
         if (attempt < attempts - 1) Thread.sleep(delayMillis)
     }
     return false
