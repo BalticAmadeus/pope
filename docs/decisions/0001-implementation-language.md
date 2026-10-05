@@ -63,3 +63,20 @@ existing JVM install to depend on.
 
 Rust — rejected early: same downsides as Go without Go's lower
 contribution barrier for the team.
+
+## Update (2026-10-05)
+
+The JVM/Gradle-plugin choice itself held up and remains correct. One
+load-bearing assumption behind it did not: "reuse Gradle's own
+dependency-resolution engine directly" (see Decision and Consequences
+above) was a deciding factor in choosing this over Go, but **the actual
+v1 resolver does not do this**. `pope/version/` (SemVer parsing,
+caret-range matching) and `pope/resolver/` (transitive resolution,
+version-conflict detection across the whole graph) are hand-written,
+invoked directly by pope's own Gradle tasks — not Gradle's/Ivy's
+`Configuration`-based resolution engine. This is called out as an open
+deviation in `README.md`'s "Status" section ("a known deviation from
+ADR-0001 worth raising with the team before treating as settled") and
+was never reconciled back into this ADR until now. Anything citing this
+ADR as the reason pope "reuses Gradle's mature resolver" is stating
+something the current implementation doesn't actually do.

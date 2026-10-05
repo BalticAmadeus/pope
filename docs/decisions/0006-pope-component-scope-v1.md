@@ -51,3 +51,34 @@ built from scratch. #9, #12, #14 are explicitly deferred past v1.
 Building a fully custom resolver/registry/cache stack independent of
 Gradle/Ivy — rejected as duplicating work ADR-0001 already decided to
 avoid.
+
+## Update (2026-10-05)
+
+Several rows in the component table above describe the *original* v1
+plan, not what ended up shipping. Left as written above for the
+historical record, but anyone citing this table for "what pope v1 does"
+should read the actual current state instead (see `README.md`'s
+"Status" section for the full list):
+
+- **#2, resolver** — not delegated to Gradle/Ivy as planned; hand-written
+  instead (`pope/version/`, `pope/resolver/`). See ADR-0001's Update.
+- **#3, registry** — not local-filesystem-only; real remote, git-hosted
+  catalog registries are the primary path (`CatalogRegistry`,
+  `PrefixRoutingRegistry`), with multi-registry and direct-source
+  dependencies. The local-directory registry from this table is now
+  only a fallback when no registry is configured at all.
+- **#4, fetcher** — not a trivial local file copy; fetches a remote git
+  repo via a bare-clone-plus-`git worktree` (`GitPackageFetcher`).
+- **#5, local cache** — not out of scope; a real cache exists
+  (`~/.pope/cache`), because fetching is no longer just a local file
+  copy — it's the whole reason repeat fetches of a remote registry stay
+  fast.
+- **#9, publisher** — no longer entirely out of scope; `pope prepare`
+  (ADR-0016) now does the mechanical part of getting a package ready to
+  publish. Tagging and pushing are still a manual, deliberate step, not
+  automated.
+- **#13, integrity verification** — implemented, not deferred:
+  `pope.lock` records a real content hash per package and fails loudly
+  if a tag was force-moved to different content.
+- **#11, semver engine (the "Open items" entry above)** — resolved, but
+  not the way this ADR expected: see ADR-0001's Update.
