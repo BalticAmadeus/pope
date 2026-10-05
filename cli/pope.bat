@@ -155,16 +155,16 @@ goto :eof
 
 :usage
 echo Usage (running against %PROJECT_ROOT%):
-echo   pope version                           print the installed pope plugin version
-echo   pope install                           resolve declared dependencies
-echo   pope install ^<package^>[:^<versionSpec^>] add + resolve a dependency in one step
-echo   pope uninstall ^<package^>               remove a dependency and clean up its files
-echo   pope propath [--tests]                 print the generated PROPATH
-echo                                          (--tests also includes buildPath's "test" entries)
+echo   pope version                                 print the installed pope plugin version
+echo   pope install                                 resolve declared dependencies
+echo   pope install ^<package^>[:^<versionSpec^>]       add + resolve a dependency in one step
+echo   pope uninstall ^<package^>                     remove a dependency and clean up its files
+echo   pope propath [--tests]                       print the generated PROPATH
+echo                                                (--tests also includes buildPath's "test" entries)
 echo   pope registry add [^<prefix^> ^<url^> [^<name^>]]  add a registry to pope-registries.properties
-echo                                          (interactive if prefix/url are omitted)
-echo   pope prune [--dry-run]                 remove pope_packages/ entries no longer part of
-echo                                          the resolved dependency graph
-echo   pope prepare                           get this package ready to publish (pins dependencies,
-echo                                          gitignores dev-only files, checks popePackageName)
+echo                                                (interactive if prefix/url are omitted)
+echo   pope prune [--dry-run]                       remove pope_packages/ entries no longer part of
+echo                                                the resolved dependency graph
+echo   pope prepare                                 get this package ready to publish (pins dependencies,
+echo                                                gitignores dev-only files, checks popePackageName)
 exit /b 1
