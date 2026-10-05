@@ -808,9 +808,12 @@ private fun findAnyConfirmingTypo(
         } catch (e: NoRegistryPrefixMatchException) {
             findAcrossRegistries(packageName, registry, userInputHandler)?.let { return it }
             val suggestion = (registry as? PrefixRoutingRegistry)?.suggestAcrossRegistries(packageName) ?: throw e
-            // The suggestion is folded into the re-thrown message too (not just the prompt) so a
-            // declined/non-interactive run's failure output still shows it, same as NameNotFoundException.
-            val question = "${e.message} - did you mean \"$suggestion\"?"
+            // Leads with the suggestion itself, not e.message's "no prefix matches" framing - once a
+            // real cross-registry match is found, that's no longer the useful part of the story, and
+            // stapling both together read like two contradictory statements. The suggestion is folded
+            // into the re-thrown message too (not just the prompt) so a declined/non-interactive run's
+            // failure output still shows it, same as NameNotFoundException.
+            val question = "\"$packageName\" doesn't match any configured registry prefix - did you mean \"$suggestion\"?"
             val approved = userInputHandler.askYesNoQuestion(question) ?: false
             if (!approved) throw NoRegistryPrefixMatchException(question)
             return findAnyConfirmingTypo(suggestion, registry, userInputHandler)
