@@ -13,9 +13,11 @@ registries" below.
 
 ## Per-machine setup
 
-No clone needed - pope is resolved by version from its published Maven
-repo (`https://balticamadeus.github.io/pope/`), the same way any other
-Gradle plugin is.
+No clone needed - pope is resolved by version from its published Maven repo 
+(https://balticamadeus.github.io/pope/), the same way any other Gradle plugin is. 
+That's just the maven-repo branch of this repo served via GitHub Pages, not a 
+hosted registry service - chosen so publishing needs no new account or token, 
+only a git branch pushed to on release.
 
 1. **Wire up your ABL project** - download `pope-init` (`pope-init.bat`
    on Windows) once, from
