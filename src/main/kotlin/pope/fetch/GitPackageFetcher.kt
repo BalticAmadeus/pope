@@ -19,7 +19,7 @@ object GitPackageFetcher {
 
         try {
             ensureBareRepo(bareRepoDir, repoUrl)
-            ensureWorktree(bareRepoDir, worktreeDir, ref)
+            ensureWorktree(bareRepoDir, worktreeDir, packageName, repoUrl, ref)
         } catch (e: Exception) {
             throw IllegalStateException(
                 "Failed to fetch \"$packageName\" from $repoUrl at ref \"$ref\": ${e.message}",
@@ -53,15 +53,24 @@ object GitPackageFetcher {
     private fun ensureBareRepo(bareRepoDir: File, repoUrl: String) {
         if (File(bareRepoDir, "HEAD").exists()) return
 
+        // A clone killed part-way leaves the folder behind without a HEAD, and git refuses to clone
+        // into a non-empty folder - so it would fail on every later run until someone deletes it.
+        bareRepoDir.deleteRecursively()
         bareRepoDir.parentFile?.mkdirs()
         GitCli.run(null, "clone", "--bare", repoUrl, bareRepoDir.path)
     }
 
-    private fun ensureWorktree(bareRepoDir: File, worktreeDir: File, ref: String) {
-        if (isWorktreeCheckedOutAt(bareRepoDir, worktreeDir, ref)) return
+    private fun ensureWorktree(bareRepoDir: File, worktreeDir: File, packageName: String, repoUrl: String, ref: String) {
+        if (isWorktreeCheckedOutAt(bareRepoDir, worktreeDir, ref)) {
+            failIfTagMoved(packageName, repoUrl, ref, worktreeDir)
+            return
+        }
 
         if (!refExistsLocally(bareRepoDir, ref)) {
             GitCli.run(bareRepoDir, "fetch", "--tags", "--force", "origin")
+            check(refExistsLocally(bareRepoDir, ref)) {
+                "ref \"$ref\" does not exist in $repoUrl (no such tag, branch or commit)"
+            }
         }
 
         if (worktreeDir.exists()) {
@@ -80,6 +89,35 @@ object GitPackageFetcher {
         val headCommit = runCatching { GitCli.run(worktreeDir, "rev-parse", "HEAD").trim() }.getOrNull() ?: return false
         val refCommit = runCatching { GitCli.run(bareRepoDir, "rev-parse", "$ref^{commit}").trim() }.getOrNull() ?: return false
         return headCommit == refCommit
+    }
+
+    /**
+     * A cached ref is reused without fetching, so a tag that was moved on the remote after it was
+     * cached would silently keep serving the old commit. Tags are meant to be immutable, so fail
+     * loudly instead. Skipped when the remote can't be reached (offline use) or when the ref isn't
+     * a tag (a branch or commit has no "moved" notion here).
+     */
+    private fun failIfTagMoved(packageName: String, repoUrl: String, ref: String, worktreeDir: File) {
+        val remoteCommit = remoteTagCommit(repoUrl, ref) ?: return
+        val cachedCommit = GitCli.run(worktreeDir, "rev-parse", "HEAD").trim()
+        check(cachedCommit == remoteCommit) {
+            "Tag \"$ref\" of \"$packageName\" has moved: the cached copy is at ${cachedCommit.take(7)}, but " +
+                "$repoUrl now has it at ${remoteCommit.take(7)}. Tags should not change after publishing - " +
+                "publish a new version, or delete ${worktreeDir.parentFile.path} to use the moved tag."
+        }
+    }
+
+    /** The commit a remote tag points at, or null if the remote is unreachable or has no such tag. */
+    private fun remoteTagCommit(repoUrl: String, ref: String): String? {
+        val output =
+            runCatching { GitCli.run(null, "ls-remote", repoUrl, "refs/tags/$ref", "refs/tags/$ref^{}") }
+                .getOrNull() ?: return null
+        val shaByRef =
+            output.lines()
+                .filter { it.isNotBlank() }
+                .associate { line -> line.substringAfter('\t') to line.substringBefore('\t') }
+        // An annotated tag lists the tag object itself, plus the commit it points at under "^{}".
+        return shaByRef["refs/tags/$ref^{}"] ?: shaByRef["refs/tags/$ref"]
     }
 
     private fun refExistsLocally(bareRepoDir: File, ref: String): Boolean =

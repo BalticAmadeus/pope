@@ -583,6 +583,348 @@ class PopePluginFunctionalTest {
         )
     }
 
+    // --- a package whose classes live in sibling sub-namespaces (the real-world "Util" shape) ---
+
+    /**
+     * Two classes in sibling sub-namespaces of one package, e.g. PauliusKup.Util.Formatter and
+     * PauliusKup.Util.Substitutable. popePackageName is left out of the manifest when null.
+     */
+    private fun siblingNamespacesRepo(root: File, popePackageName: String?): File {
+        val dir = File(root, "util-repo")
+        dir.mkdirs()
+        git(dir, "init", "-b", "main")
+        git(dir, "config", "user.email", "pope-test@example.com")
+        git(dir, "config", "user.name", "pope test")
+        val manifest =
+            JSONObject()
+                .put("name", "util-repo-project")
+                .put("version", "0.0.1")
+                .put("popeDependencies", JSONObject())
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+        if (popePackageName != null) manifest.put("popePackageName", popePackageName)
+        File(dir, "openedge-project.json").writeText(manifest.toString(2))
+        for (name in listOf("Formatter", "Substitutable")) {
+            val classDir = File(dir, "src/PauliusKup/Util/$name").apply { mkdirs() }
+            File(classDir, "$name.cls").writeText("class PauliusKup.Util.$name.$name:\nend class.")
+        }
+        git(dir, "add", "-A")
+        git(dir, "commit", "-m", "initial")
+        git(dir, "tag", "v0.0.1")
+        return dir
+    }
+
+    private fun buildDirectSourceProject(repo: File, cacheDir: File): File {
+        val projectDir = createTempDirectory("pope-functional-test-util-shape").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "util-shape-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "util-shape-fixture")
+                .put("version", "1.0.0")
+                .put("popePackageName", "example.consumer")
+                .put(
+                    "popeDependencies",
+                    JSONObject().put(
+                        "Util",
+                        JSONObject().put("repoUrl", repo.absolutePath.replace("\\", "/")).put("ref", "v0.0.1"),
+                    ),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        return projectDir
+    }
+
+    @Test
+    fun `a package with classes in sibling sub-namespaces installs when popePackageName is declared`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-util-remotes").toFile()
+        val repo = siblingNamespacesRepo(remotesRoot, popePackageName = "PauliusKup.Util")
+        val cacheDir = createTempDirectory("pope-functional-test-util-cache").toFile()
+        val projectDir = buildDirectSourceProject(repo, cacheDir)
+
+        val result = run(projectDir, "popeInstall", "-PpopeTrustAll")
+
+        assertTrue(
+            result.output.contains("Resolved 1 dependency:"),
+            "Expected the sibling-namespace package to resolve, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/PauliusKup/Util/Formatter/Formatter.cls").exists(),
+            "Expected the Formatter sub-namespace to be installed, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/PauliusKup/Util/Substitutable/Substitutable.cls").exists(),
+            "Expected the Substitutable sub-namespace to be installed, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `a package with classes in sibling sub-namespaces and no popePackageName fails with a message naming the key to set`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-util-remotes").toFile()
+        val repo = siblingNamespacesRepo(remotesRoot, popePackageName = null)
+        val cacheDir = createTempDirectory("pope-functional-test-util-cache").toFile()
+        val projectDir = buildDirectSourceProject(repo, cacheDir)
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall", "-PpopeTrustAll")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("disagree on namespace"),
+            "Expected a namespace-disagreement failure, got:\n${result.output}",
+        )
+        assertTrue(
+            result.output.contains("set popePackageName explicitly"),
+            "Expected the message to name popePackageName as the key to set, got:\n${result.output}",
+        )
+    }
+
+    // --- command edge cases ---
+
+    private fun manifestWithDependencies(dependencies: JSONObject?): JSONObject =
+        JSONObject()
+            .put("name", "consumer-app-fixture")
+            .put("version", "1.0.0")
+            .put("popePackageName", "example.consumer")
+            .apply { if (dependencies != null) put("popeDependencies", dependencies) }
+            .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+
+    private fun lockedPackages(projectDir: File): Set<String> =
+        JSONObject(File(projectDir, "pope.lock").readText()).getJSONObject("resolved").keySet()
+
+    @Test
+    fun `popeInstall with an empty popeDependencies succeeds and writes an empty lock`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(JSONObject()))
+
+        val result = run(projectDir, "popeInstall")
+
+        assertTrue(
+            result.output.contains("All 0 dependencies already up to date"),
+            "Expected a clean zero-dependency install, got:\n${result.output}",
+        )
+        assertTrue(lockedPackages(projectDir).isEmpty(), "Expected nothing in pope.lock's resolved section")
+    }
+
+    @Test
+    fun `popeInstall with no popeDependencies key at all behaves like an empty one`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(null))
+
+        val result = run(projectDir, "popeInstall")
+
+        assertTrue(
+            result.output.contains("All 0 dependencies already up to date"),
+            "Expected a clean zero-dependency install, got:\n${result.output}",
+        )
+        assertTrue(lockedPackages(projectDir).isEmpty(), "Expected nothing in pope.lock's resolved section")
+    }
+
+    @Test
+    fun `popeInstall fails with a clear message when there is no openedge-project json`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(JSONObject()))
+        File(projectDir, "openedge-project.json").delete()
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("Manifest not found"),
+            "Expected a clear missing-manifest error, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `running popeInstall twice changes nothing the second time`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")))
+        run(projectDir, "popeInstall")
+        val lockAfterFirst = File(projectDir, "pope.lock").readText()
+        val buildPathAfterFirst = buildPathOf(projectDir)
+
+        val second = run(projectDir, "popeInstall")
+
+        assertTrue(
+            second.output.contains("All 2 dependencies already up to date"),
+            "Expected the second run to find everything up to date, got:\n${second.output}",
+        )
+        assertEquals(lockAfterFirst, File(projectDir, "pope.lock").readText())
+        assertEquals(buildPathAfterFirst, buildPathOf(projectDir))
+    }
+
+    @Test
+    fun `editing the manifest to add a dependency and reinstalling installs only what is new`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.greeter", "^1.0.0")))
+        run(projectDir, "popeInstall")
+        assertEquals(setOf("example.greeter"), lockedPackages(projectDir))
+
+        val manifestFile = File(projectDir, "openedge-project.json")
+        JSONObject(manifestFile.readText())
+            .apply { getJSONObject("popeDependencies").put("example.calculator", "^1.0.0") }
+            .let { manifestFile.writeText(it.toString(2)) }
+        val result = run(projectDir, "popeInstall")
+
+        assertEquals(setOf("example.greeter", "example.calculator"), lockedPackages(projectDir))
+        assertTrue(
+            result.output.contains("+ example.calculator"),
+            "Expected the newly added dependency listed, got:\n${result.output}",
+        )
+        assertTrue(
+            !result.output.contains("+ example.greeter"),
+            "Expected the already-installed dependency not listed as new, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `uninstalling a direct dependency that another dependency still needs keeps it installed`() {
+        // calculator-package itself depends on greeter, so greeter is both declared and needed.
+        val projectDir =
+            buildProject(
+                buildRegistry(),
+                manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0").put("example.greeter", "^1.0.0")),
+            )
+        run(projectDir, "popeInstall")
+
+        run(projectDir, "popeUninstall", "-PpopeUninstall=example.greeter")
+
+        assertTrue(
+            !JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("popeDependencies")
+                .has("example.greeter"),
+            "Expected greeter no longer declared directly",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/example.greeter/src/example/greeter/Greeter.cls").exists(),
+            "Expected greeter's files kept, since calculator still needs it",
+        )
+        assertTrue("example.greeter" in lockedPackages(projectDir), "Expected greeter kept in pope.lock")
+        assertTrue(
+            "pope_packages/example.greeter/src" in buildPathOf(projectDir),
+            "Expected greeter's buildPath entry kept",
+        )
+    }
+
+    @Test
+    fun `uninstalling a package that is only pulled in transitively fails as not declared and removes nothing`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")))
+        run(projectDir, "popeInstall")
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeUninstall", "-PpopeUninstall=example.greeter")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("not declared"),
+            "Expected a not-declared error for a transitive-only package, got:\n${result.output}",
+        )
+        assertEquals(setOf("example.calculator", "example.greeter"), lockedPackages(projectDir))
+        assertTrue(File(projectDir, "pope_packages/example.greeter").exists(), "Expected nothing removed")
+    }
+
+    // --- paths with spaces (common on Windows, e.g. "C:\Users\First Last\...") ---
+
+    @Test
+    fun `a project and a registry whose folder names contain spaces install and produce a PROPATH`() {
+        val base = createTempDirectory("pope-functional-test-spaces").toFile()
+        val registryDir = File(base, "my registry").apply { mkdirs() }
+        for ((fixtureDirName, registryName) in listOf(
+            "calculator-package" to "example.calculator",
+            "greeter-package" to "example.greeter",
+        )) {
+            File("src/functionalTest/resources/fixtures/$fixtureDirName").copyRecursively(File(registryDir, registryName))
+        }
+        val projectDir = File(base, "my project").apply { mkdirs() }
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "spaces-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                registryRoot.set(file("${registryDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")).toString(2),
+        )
+
+        val installResult = run(projectDir, "popeInstall")
+        val propathResult = run(projectDir, "popePropath")
+
+        assertTrue(
+            installResult.output.contains("Resolved 2 dependencies:"),
+            "Expected both dependencies resolved despite the spaces, got:\n${installResult.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/example.calculator/src/example/calculator/Calculator.cls").exists(),
+            "Expected the package copied into a pope_packages under the spaced project path",
+        )
+        assertTrue(
+            propathResult.output.contains(File(projectDir, "src").canonicalPath),
+            "Expected the PROPATH to contain the full spaced project path, got:\n${propathResult.output}",
+        )
+    }
+
+    @Test
+    fun `a git package repo and a cache folder whose names contain spaces still fetch and install`() {
+        val base = createTempDirectory("pope-functional-test-spaces").toFile()
+        val repo = gitPackageRepo(File(base, "remote repos").apply { mkdirs() }, "greeter repo", "greeter", "1.0.1")
+        val cacheDir = File(base, "my cache").apply { mkdirs() }
+        val projectDir = File(base, "my project").apply { mkdirs() }
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "spaces-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            manifestWithDependencies(
+                JSONObject().put(
+                    "greeter",
+                    JSONObject().put("repoUrl", repo.absolutePath.replace("\\", "/")).put("ref", "v1.0.1"),
+                ),
+            ).toString(2),
+        )
+
+        val result = run(projectDir, "popeInstall", "-PpopeTrustAll")
+
+        assertTrue(
+            result.output.contains("Resolved 1 dependency:"),
+            "Expected the package fetched from a spaced repo path into a spaced cache, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/greeter/Greeter.cls").exists(),
+            "Expected the fetched package installed under the spaced project path",
+        )
+    }
+
     // --- explicit "registryName/localName" selection ---
 
     @Test
