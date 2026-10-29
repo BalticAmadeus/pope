@@ -1,14 +1,16 @@
 name: CI
 
 # Runs the full test suite (unit + functional, via `./gradlew check`) on every
-# pull request into develop or main, and on every push to them as a
-# post-merge safety net. Branch protection (set by a repo admin) is what
-# turns a red run here into a blocked merge - this file only produces the check.
+# pull request into develop or main, and on every push to main as a
+# post-merge safety net. develop has no push trigger: with branch protection
+# requiring a PR, everything reaching it was already tested by its PR run.
+# Branch protection (set by a repo admin) is what turns a red run here into a
+# blocked merge - this file only produces the check.
 on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [develop, main]
+    branches: [main]
 
 permissions:
   contents: read
