@@ -1,0 +1,52 @@
+name: CI
+
+# Runs the full test suite (unit + functional, via `./gradlew check`) on every
+# pull request into develop or main, and on every push to them as a
+# post-merge safety net. Branch protection (set by a repo admin) is what
+# turns a red run here into a blocked merge - this file only produces the check.
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+# A new push to the same PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v4
+
+      # bash on both OSes so ./gradlew means the same thing everywhere.
+      - name: Run unit and functional tests
+        shell: bash
+        run: ./gradlew check --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: build/reports/tests
