@@ -153,6 +153,55 @@ class GitPackageFetcherTest {
     }
 
     @Test
+    fun `recovers when an interrupted run left a worktree folder with no git checkout in it`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+        GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        val worktreeDir = File(destDir, "v1.0.1")
+        File(worktreeDir, ".git").delete()
+        File(worktreeDir, "leftover.txt").writeText("half-written")
+
+        val resolved = GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        assertEquals("1.0.1", resolved.version)
+        assertTrue(File(destDir, "v1.0.1/.git").exists(), "Expected the worktree to be checked out again")
+        assertTrue(!File(worktreeDir, "leftover.txt").exists(), "Expected the leftover file to be cleared")
+    }
+
+    @Test
+    fun `recovers when the cached worktree folder was deleted by hand`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+        GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        File(destDir, "v1.0.1").deleteRecursively()
+
+        val resolved = GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        assertEquals("1.0.1", resolved.version)
+        assertTrue(File(destDir, "v1.0.1/.git").exists(), "Expected the worktree to be checked out again")
+    }
+
+    @Test
+    fun `recovers when an interrupted clone left a partial bare repo folder behind`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+
+        // What a clone killed part-way leaves behind: the folder exists, but there is no HEAD yet.
+        File(destDir, "_bare.git/objects").mkdirs()
+        File(destDir, "_bare.git/config").writeText("[core]\n")
+
+        val resolved = GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        assertEquals("1.0.1", resolved.version)
+        assertTrue(File(destDir, "_bare.git/HEAD").exists(), "Expected the bare repo to be cloned again")
+    }
+
+    @Test
     fun `throws a clear error when the cloned repo has no openedge-project json`() {
         val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
         val dir = File(remotesRoot, "empty-repo").apply { mkdirs() }

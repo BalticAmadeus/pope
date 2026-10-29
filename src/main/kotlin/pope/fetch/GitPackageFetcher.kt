@@ -53,6 +53,9 @@ object GitPackageFetcher {
     private fun ensureBareRepo(bareRepoDir: File, repoUrl: String) {
         if (File(bareRepoDir, "HEAD").exists()) return
 
+        // A clone killed part-way leaves the folder behind without a HEAD, and git refuses to clone
+        // into a non-empty folder - so it would fail on every later run until someone deletes it.
+        bareRepoDir.deleteRecursively()
         bareRepoDir.parentFile?.mkdirs()
         GitCli.run(null, "clone", "--bare", repoUrl, bareRepoDir.path)
     }
