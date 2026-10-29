@@ -5,6 +5,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class GitPackageFetcherTest {
     private fun git(dir: File, vararg args: String) = GitCli.run(dir, *args)
@@ -89,6 +90,66 @@ class GitPackageFetcherTest {
         assertEquals("1.0.2", second.version)
         assertEquals(true, File(destDir, "v1.0.1/.git").exists())
         assertEquals(true, File(destDir, "v1.0.2/.git").exists())
+    }
+
+    @Test
+    fun `fails loudly when a cached tag was moved on the remote after it was cached`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+        GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        File(repo, "src/marker.i").writeText("/* changed after the tag was first fetched */")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-m", "change after tagging")
+        git(repo, "tag", "-f", "v1.0.1")
+
+        val error =
+            assertFailsWith<IllegalStateException> {
+                GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+            }
+        assertTrue(error.message!!.contains("has moved"), "Expected a moved-tag message, got: ${error.message}")
+        assertTrue(error.message!!.contains("v1.0.1"), "Expected the tag name in the message, got: ${error.message}")
+    }
+
+    @Test
+    fun `an annotated tag that has not moved is reused without error`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        git(repo, "tag", "-a", "v1.0.1-annotated", "-m", "annotated release")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+
+        GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1-annotated", destDir)
+        val second = GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1-annotated", destDir)
+
+        assertEquals("1.0.1", second.version)
+    }
+
+    @Test
+    fun `a cached ref still resolves when the remote is unreachable`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+        GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v1.0.1", destDir)
+
+        val unreachable = File(remotesRoot, "no-such-repo").absolutePath
+        val second = GitPackageFetcher.fetch("ba.greeter", unreachable, "v1.0.1", destDir)
+
+        assertEquals("1.0.1", second.version)
+    }
+
+    @Test
+    fun `a ref that does not exist on the remote fails with a clear message naming the ref`() {
+        val remotesRoot = createTempDirectory("pope-fetcher-remotes").toFile()
+        val repo = packageRepo(remotesRoot, "greeter-repo", "greeter", "1.0.1")
+        val destDir = File(createTempDirectory("pope-fetcher-dest").toFile(), "greeter")
+
+        val error =
+            assertFailsWith<IllegalStateException> {
+                GitPackageFetcher.fetch("ba.greeter", repo.absolutePath, "v9.9.9", destDir)
+            }
+        assertTrue(error.message!!.contains("v9.9.9"), "Expected the missing ref in the message, got: ${error.message}")
+        assertTrue(error.message!!.contains("does not exist"), "Expected a clear not-found message, got: ${error.message}")
     }
 
     @Test
