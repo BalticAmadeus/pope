@@ -583,6 +583,115 @@ class PopePluginFunctionalTest {
         )
     }
 
+    // --- a package whose classes live in sibling sub-namespaces (the real-world "Util" shape) ---
+
+    /**
+     * Two classes in sibling sub-namespaces of one package, e.g. PauliusKup.Util.Formatter and
+     * PauliusKup.Util.Substitutable. popePackageName is left out of the manifest when null.
+     */
+    private fun siblingNamespacesRepo(root: File, popePackageName: String?): File {
+        val dir = File(root, "util-repo")
+        dir.mkdirs()
+        git(dir, "init", "-b", "main")
+        git(dir, "config", "user.email", "pope-test@example.com")
+        git(dir, "config", "user.name", "pope test")
+        val manifest =
+            JSONObject()
+                .put("name", "util-repo-project")
+                .put("version", "0.0.1")
+                .put("popeDependencies", JSONObject())
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+        if (popePackageName != null) manifest.put("popePackageName", popePackageName)
+        File(dir, "openedge-project.json").writeText(manifest.toString(2))
+        for (name in listOf("Formatter", "Substitutable")) {
+            val classDir = File(dir, "src/PauliusKup/Util/$name").apply { mkdirs() }
+            File(classDir, "$name.cls").writeText("class PauliusKup.Util.$name.$name:\nend class.")
+        }
+        git(dir, "add", "-A")
+        git(dir, "commit", "-m", "initial")
+        git(dir, "tag", "v0.0.1")
+        return dir
+    }
+
+    private fun buildDirectSourceProject(repo: File, cacheDir: File): File {
+        val projectDir = createTempDirectory("pope-functional-test-util-shape").toFile()
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "util-shape-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            JSONObject()
+                .put("name", "util-shape-fixture")
+                .put("version", "1.0.0")
+                .put("popePackageName", "example.consumer")
+                .put(
+                    "popeDependencies",
+                    JSONObject().put(
+                        "Util",
+                        JSONObject().put("repoUrl", repo.absolutePath.replace("\\", "/")).put("ref", "v0.0.1"),
+                    ),
+                )
+                .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+                .toString(2),
+        )
+        return projectDir
+    }
+
+    @Test
+    fun `a package with classes in sibling sub-namespaces installs when popePackageName is declared`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-util-remotes").toFile()
+        val repo = siblingNamespacesRepo(remotesRoot, popePackageName = "PauliusKup.Util")
+        val cacheDir = createTempDirectory("pope-functional-test-util-cache").toFile()
+        val projectDir = buildDirectSourceProject(repo, cacheDir)
+
+        val result = run(projectDir, "popeInstall", "-PpopeTrustAll")
+
+        assertTrue(
+            result.output.contains("Resolved 1 dependency:"),
+            "Expected the sibling-namespace package to resolve, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/PauliusKup/Util/Formatter/Formatter.cls").exists(),
+            "Expected the Formatter sub-namespace to be installed, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/PauliusKup/Util/Substitutable/Substitutable.cls").exists(),
+            "Expected the Substitutable sub-namespace to be installed, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `a package with classes in sibling sub-namespaces and no popePackageName fails with a message naming the key to set`() {
+        val remotesRoot = createTempDirectory("pope-functional-test-util-remotes").toFile()
+        val repo = siblingNamespacesRepo(remotesRoot, popePackageName = null)
+        val cacheDir = createTempDirectory("pope-functional-test-util-cache").toFile()
+        val projectDir = buildDirectSourceProject(repo, cacheDir)
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall", "-PpopeTrustAll")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("disagree on namespace"),
+            "Expected a namespace-disagreement failure, got:\n${result.output}",
+        )
+        assertTrue(
+            result.output.contains("set popePackageName explicitly"),
+            "Expected the message to name popePackageName as the key to set, got:\n${result.output}",
+        )
+    }
+
     // --- explicit "registryName/localName" selection ---
 
     @Test
