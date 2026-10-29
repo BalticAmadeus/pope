@@ -692,6 +692,154 @@ class PopePluginFunctionalTest {
         )
     }
 
+    // --- command edge cases ---
+
+    private fun manifestWithDependencies(dependencies: JSONObject?): JSONObject =
+        JSONObject()
+            .put("name", "consumer-app-fixture")
+            .put("version", "1.0.0")
+            .put("popePackageName", "example.consumer")
+            .apply { if (dependencies != null) put("popeDependencies", dependencies) }
+            .put("buildPath", JSONArray().put(JSONObject().put("type", "source").put("path", "src")))
+
+    private fun lockedPackages(projectDir: File): Set<String> =
+        JSONObject(File(projectDir, "pope.lock").readText()).getJSONObject("resolved").keySet()
+
+    @Test
+    fun `popeInstall with an empty popeDependencies succeeds and writes an empty lock`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(JSONObject()))
+
+        val result = run(projectDir, "popeInstall")
+
+        assertTrue(
+            result.output.contains("All 0 dependencies already up to date"),
+            "Expected a clean zero-dependency install, got:\n${result.output}",
+        )
+        assertTrue(lockedPackages(projectDir).isEmpty(), "Expected nothing in pope.lock's resolved section")
+    }
+
+    @Test
+    fun `popeInstall with no popeDependencies key at all behaves like an empty one`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(null))
+
+        val result = run(projectDir, "popeInstall")
+
+        assertTrue(
+            result.output.contains("All 0 dependencies already up to date"),
+            "Expected a clean zero-dependency install, got:\n${result.output}",
+        )
+        assertTrue(lockedPackages(projectDir).isEmpty(), "Expected nothing in pope.lock's resolved section")
+    }
+
+    @Test
+    fun `popeInstall fails with a clear message when there is no openedge-project json`() {
+        val projectDir = buildProject(buildRegistry(), manifestWithDependencies(JSONObject()))
+        File(projectDir, "openedge-project.json").delete()
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeInstall")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("Manifest not found"),
+            "Expected a clear missing-manifest error, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `running popeInstall twice changes nothing the second time`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")))
+        run(projectDir, "popeInstall")
+        val lockAfterFirst = File(projectDir, "pope.lock").readText()
+        val buildPathAfterFirst = buildPathOf(projectDir)
+
+        val second = run(projectDir, "popeInstall")
+
+        assertTrue(
+            second.output.contains("All 2 dependencies already up to date"),
+            "Expected the second run to find everything up to date, got:\n${second.output}",
+        )
+        assertEquals(lockAfterFirst, File(projectDir, "pope.lock").readText())
+        assertEquals(buildPathAfterFirst, buildPathOf(projectDir))
+    }
+
+    @Test
+    fun `editing the manifest to add a dependency and reinstalling installs only what is new`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.greeter", "^1.0.0")))
+        run(projectDir, "popeInstall")
+        assertEquals(setOf("example.greeter"), lockedPackages(projectDir))
+
+        val manifestFile = File(projectDir, "openedge-project.json")
+        JSONObject(manifestFile.readText())
+            .apply { getJSONObject("popeDependencies").put("example.calculator", "^1.0.0") }
+            .let { manifestFile.writeText(it.toString(2)) }
+        val result = run(projectDir, "popeInstall")
+
+        assertEquals(setOf("example.greeter", "example.calculator"), lockedPackages(projectDir))
+        assertTrue(
+            result.output.contains("+ example.calculator"),
+            "Expected the newly added dependency listed, got:\n${result.output}",
+        )
+        assertTrue(
+            !result.output.contains("+ example.greeter"),
+            "Expected the already-installed dependency not listed as new, got:\n${result.output}",
+        )
+    }
+
+    @Test
+    fun `uninstalling a direct dependency that another dependency still needs keeps it installed`() {
+        // calculator-package itself depends on greeter, so greeter is both declared and needed.
+        val projectDir =
+            buildProject(
+                buildRegistry(),
+                manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0").put("example.greeter", "^1.0.0")),
+            )
+        run(projectDir, "popeInstall")
+
+        run(projectDir, "popeUninstall", "-PpopeUninstall=example.greeter")
+
+        assertTrue(
+            !JSONObject(File(projectDir, "openedge-project.json").readText()).getJSONObject("popeDependencies")
+                .has("example.greeter"),
+            "Expected greeter no longer declared directly",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/example.greeter/src/example/greeter/Greeter.cls").exists(),
+            "Expected greeter's files kept, since calculator still needs it",
+        )
+        assertTrue("example.greeter" in lockedPackages(projectDir), "Expected greeter kept in pope.lock")
+        assertTrue(
+            "pope_packages/example.greeter/src" in buildPathOf(projectDir),
+            "Expected greeter's buildPath entry kept",
+        )
+    }
+
+    @Test
+    fun `uninstalling a package that is only pulled in transitively fails as not declared and removes nothing`() {
+        val projectDir =
+            buildProject(buildRegistry(), manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")))
+        run(projectDir, "popeInstall")
+
+        val result =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeUninstall", "-PpopeUninstall=example.greeter")
+                .buildAndFail()
+
+        assertTrue(
+            result.output.contains("not declared"),
+            "Expected a not-declared error for a transitive-only package, got:\n${result.output}",
+        )
+        assertEquals(setOf("example.calculator", "example.greeter"), lockedPackages(projectDir))
+        assertTrue(File(projectDir, "pope_packages/example.greeter").exists(), "Expected nothing removed")
+    }
+
     // --- explicit "registryName/localName" selection ---
 
     @Test
