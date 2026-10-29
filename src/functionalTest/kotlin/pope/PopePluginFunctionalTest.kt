@@ -840,6 +840,91 @@ class PopePluginFunctionalTest {
         assertTrue(File(projectDir, "pope_packages/example.greeter").exists(), "Expected nothing removed")
     }
 
+    // --- paths with spaces (common on Windows, e.g. "C:\Users\First Last\...") ---
+
+    @Test
+    fun `a project and a registry whose folder names contain spaces install and produce a PROPATH`() {
+        val base = createTempDirectory("pope-functional-test-spaces").toFile()
+        val registryDir = File(base, "my registry").apply { mkdirs() }
+        for ((fixtureDirName, registryName) in listOf(
+            "calculator-package" to "example.calculator",
+            "greeter-package" to "example.greeter",
+        )) {
+            File("src/functionalTest/resources/fixtures/$fixtureDirName").copyRecursively(File(registryDir, registryName))
+        }
+        val projectDir = File(base, "my project").apply { mkdirs() }
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "spaces-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                registryRoot.set(file("${registryDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            manifestWithDependencies(JSONObject().put("example.calculator", "^1.0.0")).toString(2),
+        )
+
+        val installResult = run(projectDir, "popeInstall")
+        val propathResult = run(projectDir, "popePropath")
+
+        assertTrue(
+            installResult.output.contains("Resolved 2 dependencies:"),
+            "Expected both dependencies resolved despite the spaces, got:\n${installResult.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/example.calculator/src/example/calculator/Calculator.cls").exists(),
+            "Expected the package copied into a pope_packages under the spaced project path",
+        )
+        assertTrue(
+            propathResult.output.contains(File(projectDir, "src").canonicalPath),
+            "Expected the PROPATH to contain the full spaced project path, got:\n${propathResult.output}",
+        )
+    }
+
+    @Test
+    fun `a git package repo and a cache folder whose names contain spaces still fetch and install`() {
+        val base = createTempDirectory("pope-functional-test-spaces").toFile()
+        val repo = gitPackageRepo(File(base, "remote repos").apply { mkdirs() }, "greeter repo", "greeter", "1.0.1")
+        val cacheDir = File(base, "my cache").apply { mkdirs() }
+        val projectDir = File(base, "my project").apply { mkdirs() }
+        projectDir.resolve("settings.gradle.kts").writeText("""rootProject.name = "spaces-fixture"""")
+        projectDir.resolve("build.gradle.kts").writeText(
+            """
+            plugins {
+                id("io.github.balticamadeus.pope")
+            }
+
+            pope {
+                cacheDir.set(file("${cacheDir.absolutePath.replace("\\", "/")}"))
+            }
+            """.trimIndent(),
+        )
+        projectDir.resolve("openedge-project.json").writeText(
+            manifestWithDependencies(
+                JSONObject().put(
+                    "greeter",
+                    JSONObject().put("repoUrl", repo.absolutePath.replace("\\", "/")).put("ref", "v1.0.1"),
+                ),
+            ).toString(2),
+        )
+
+        val result = run(projectDir, "popeInstall", "-PpopeTrustAll")
+
+        assertTrue(
+            result.output.contains("Resolved 1 dependency:"),
+            "Expected the package fetched from a spaced repo path into a spaced cache, got:\n${result.output}",
+        )
+        assertTrue(
+            File(projectDir, "pope_packages/dependencies/greeter/Greeter.cls").exists(),
+            "Expected the fetched package installed under the spaced project path",
+        )
+    }
+
     // --- explicit "registryName/localName" selection ---
 
     @Test
