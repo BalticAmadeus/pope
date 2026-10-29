@@ -37,6 +37,11 @@ jobs:
           tag="${{ github.event.release.tag_name }}"
           echo "value=${tag#v}" >> "$GITHUB_OUTPUT"
 
+      # Nothing else gates a release on CI: publishing a release does not wait for the CI run on
+      # main, so the tests run here too, before anything is published.
+      - name: Run unit and functional tests
+        run: ./gradlew check --stacktrace
+
       - name: Publish to a local folder
         run: |
           ./gradlew publish \
