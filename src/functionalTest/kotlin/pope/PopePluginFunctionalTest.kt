@@ -425,7 +425,9 @@ class PopePluginFunctionalTest {
                 .withPluginClasspath()
                 .withArguments("popePropath")
                 .build()
-        val expectedSrcEntry = File(abRoot, "src").absolutePath
+        // canonicalPath, not absolutePath: Gradle reports the real path, while createTempDirectory can
+        // return an 8.3 short name on Windows runners (e.g. C:\Users\RUNNER~1\...).
+        val expectedSrcEntry = File(abRoot, "src").canonicalPath
         assertTrue(
             propathResult.output.contains(expectedSrcEntry),
             "Expected popePropath to resolve buildPath entries against abRoot, got:\n${propathResult.output}",
@@ -1306,8 +1308,9 @@ class PopePluginFunctionalTest {
         File(projectDir, "src").mkdirs()
         File(projectDir, "test").mkdirs()
 
-        val expectedSrcEntry = File(projectDir, "src").absolutePath
-        val expectedTestEntry = File(projectDir, "test").absolutePath
+        // canonicalPath, not absolutePath: see projectRoot test above (Windows 8.3 short temp paths).
+        val expectedSrcEntry = File(projectDir, "src").canonicalPath
+        val expectedTestEntry = File(projectDir, "test").canonicalPath
 
         val withoutFlag = run(projectDir, "popePropath")
         assertTrue(withoutFlag.output.contains(expectedSrcEntry), "Expected source root in output, got:\n${withoutFlag.output}")
