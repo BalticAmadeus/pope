@@ -25,8 +25,8 @@ object PackageNameInferrer {
             1 -> namespaces.single()
             else ->
                 throw IllegalStateException(
-                    "Could not infer package_name: .cls files under ${sourceDir.path} disagree on namespace " +
-                        "(found ${namespaces.sorted()}) — set package_name explicitly in openedge-project.json instead",
+                    "Could not infer popePackageName: .cls files under ${sourceDir.path} disagree on namespace " +
+                        "(found ${namespaces.sorted()}) - set popePackageName explicitly in openedge-project.json instead",
                 )
         }
     }
