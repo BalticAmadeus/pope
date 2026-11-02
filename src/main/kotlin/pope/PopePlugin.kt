@@ -1,5 +1,8 @@
 package pope
 
+import pope.db.OpenEdgeInstall
+import pope.db.ProcessCommandRunner
+import pope.db.SchemaDatabaseBuilder
 import pope.integrity.DirectoryHash
 import pope.lock.IntegrityChecker
 import pope.lock.LockedPackage
@@ -250,6 +253,49 @@ class PopePlugin : Plugin<Project> {
                 project.logger.quiet("")
                 project.logger.quiet(version)
                 project.logger.quiet("")
+            }
+        }
+
+        project.tasks.register("popeDbBuild") { task ->
+            task.group = "pope"
+            task.description =
+                "Builds an empty, schema-only OpenEdge database from .df files, so DB-bound code can compile " +
+                "without a real database. Usage: -PpopeDbName=<name> -PpopeDbSchema=<file.df>[,<file.df>...] " +
+                "(relative to the project root). Needs OpenEdge: set DLC, or pass -PpopeDlc=<install dir>. " +
+                "Pass -PpopeDbDir=<dir> to choose where it is built (default: pope_db/<name>). Experimental."
+            task.doLast {
+                project.logger.lifecycle("=== pope db build ===")
+                project.logger.lifecycle("")
+
+                val projectRoot = extension.projectRoot.get().asFile
+                val name =
+                    project.findProperty("popeDbName") as String?
+                        ?: throw GradleException("Missing -PpopeDbName=<name>.")
+                val schemaFiles =
+                    (
+                        project.findProperty("popeDbSchema") as String?
+                            ?: throw GradleException("Missing -PpopeDbSchema=<file.df>[,<file.df>...].")
+                    ).split(',').map { it.trim() }.filter { it.isNotEmpty() }.map { projectRoot.resolve(it) }
+                val outputDir =
+                    (project.findProperty("popeDbDir") as String?)?.let { projectRoot.resolve(it) }
+                        ?: projectRoot.resolve("pope_db/$name")
+
+                val install =
+                    try {
+                        OpenEdgeInstall.locate(project.findProperty("popeDlc") as String?)
+                    } catch (e: IllegalStateException) {
+                        throw GradleException(e.message!!)
+                    }
+                val database =
+                    try {
+                        SchemaDatabaseBuilder(install, ProcessCommandRunner).build(outputDir, name, schemaFiles)
+                    } catch (e: IllegalStateException) {
+                        throw GradleException(e.message!!)
+                    }
+
+                project.logger.lifecycle("  + built ${database.databaseFile.path} from ${schemaFiles.size} schema file(s)")
+                project.logger.lifecycle("")
+                project.logger.lifecycle("Connect with: ${database.connectArguments().joinToString(" ")}")
             }
         }
 
