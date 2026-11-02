@@ -15,6 +15,7 @@ class SchemaDatabaseBuilderTest {
         private val procopyExit: Int = 0,
         private val loadExit: Int = 0,
         private val loadWritesOk: Boolean = true,
+        private val loadErrors: String? = null,
     ) : CommandRunner {
         val commands = mutableListOf<List<String>>()
         var databasePresentAtProcopy: Boolean? = null
@@ -27,6 +28,8 @@ class SchemaDatabaseBuilderTest {
                 if (procopyExit == 0) File(target.path + ".db").writeText("db")
                 return CommandResult(procopyExit, "procopy output")
             }
+            // The real loader reports a bad .df in "<database>.e", yet still runs to the end and exits 0.
+            if (loadErrors != null) File(workingDir, "${command[3]}.e").writeText(loadErrors)
             if (loadExit == 0 && loadWritesOk) File(workingDir, "load-ok.txt").writeText("ok")
             return CommandResult(loadExit, "progres output")
         }
@@ -50,7 +53,7 @@ class SchemaDatabaseBuilderTest {
         assertEquals(listOf(install.procopy.path, install.emptyDatabase.path, File(dir, "out/sportsdb").path), fake.commands[0])
         assertEquals(listOf(install.progres.path, "-b", "-db", "sportsdb", "-1", "-p", "load-schema.p"), fake.commands[1])
         assertEquals(
-            listOf(customer, orders).map { it.absolutePath.replace('\\', '/') },
+            listOf("schema-1.df", "schema-2.df").map { File(dir, "out/$it").absolutePath.replace('\\', '/') },
             File(dir, "out/schema-files.txt").readLines(),
         )
         assertEquals("sportsdb", database.name)
@@ -140,6 +143,62 @@ class SchemaDatabaseBuilderTest {
             }
 
         assertTrue(error.message!!.contains("did not finish"), error.message)
+    }
+
+    @Test
+    fun `errors the loader wrote to its error file fail the build even though it exited cleanly`() {
+        val dir = createTempDirectory("pope-db-test").toFile()
+        val customer = schemaFile(dir, "customer.df", "Customer")
+        val errors = "** Error during ADD TABLE Customer **\n\nAREA NAME either not found in database or not type d (data)."
+
+        val error =
+            assertFailsWith<IllegalStateException> {
+                SchemaDatabaseBuilder(install, FakeOpenEdge(loadErrors = errors)).build(File(dir, "out"), "db", listOf(customer))
+            }
+
+        assertTrue(error.message!!.contains("AREA NAME either not found"), error.message)
+        assertTrue(error.message!!.contains("db.e"), "Expected the error file named, got: ${error.message}")
+    }
+
+    @Test
+    fun `storage areas are removed from the copy that is loaded, and the original is left alone`() {
+        val dir = createTempDirectory("pope-db-test").toFile()
+        val original =
+            """
+            ADD TABLE "Customer"
+              AREA "Data Area"
+              DUMP-NAME "customer"
+
+            ADD FIELD "Photo" OF "Customer" AS blob
+              LOB-AREA "LOB Area"
+              LOB-BYTES 104857600
+
+            ADD INDEX "CustNum" ON "Customer"
+              AREA "Index Area"
+              UNIQUE
+              INDEX-FIELD "CustNum" ASCENDING
+            """.trimIndent().replace("\n", "\r\n")
+        val file = File(dir, "customer.df").apply { writeText(original) }
+
+        SchemaDatabaseBuilder(install, FakeOpenEdge()).build(File(dir, "out"), "db", listOf(file))
+
+        val loaded = File(dir, "out/schema-1.df").readText()
+        assertTrue(!loaded.contains("AREA"), "Expected no storage area left, got:\n$loaded")
+        assertTrue(loaded.contains("ADD TABLE \"Customer\"\r\n  DUMP-NAME \"customer\""), "Expected the rest kept, got:\n$loaded")
+        assertTrue(loaded.contains("LOB-BYTES 104857600") && loaded.contains("INDEX-FIELD \"CustNum\" ASCENDING"))
+        assertEquals(original, file.readText(), "Expected the original schema file untouched")
+    }
+
+    @Test
+    fun `bytes outside plain ASCII survive the copy unchanged`() {
+        val dir = createTempDirectory("pope-db-test").toFile()
+        val bytes = "ADD TABLE \"Customer\"\n  AREA \"Data Area\"\n  DESCRIPTION \"Kunde äöü\"\n".toByteArray(Charsets.ISO_8859_1)
+        val file = File(dir, "customer.df").apply { writeBytes(bytes) }
+
+        SchemaDatabaseBuilder(install, FakeOpenEdge()).build(File(dir, "out"), "db", listOf(file))
+
+        val expected = "ADD TABLE \"Customer\"\n  DESCRIPTION \"Kunde äöü\"\n".toByteArray(Charsets.ISO_8859_1)
+        assertTrue(expected.contentEquals(File(dir, "out/schema-1.df").readBytes()))
     }
 
     @Test

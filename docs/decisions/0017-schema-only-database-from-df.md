@@ -43,10 +43,18 @@ What was checked by hand and then in a spike (`popeDbBuild`), with OpenEdge
   code 0, reports nothing, and keeps the first definition. The second file's
   fields are ignored without any message.
 - A `.df` trailer with a wrong byte count (`0000000000`) is accepted.
+- A schema dumped from a real database does not load as it is. OpenEdge's own
+  `sports2020` sample (25 tables, 211 fields, 12 sequences) names the storage
+  areas `Data Area`, `Index Area` and `LOB Area`, which the empty database does
+  not have. The loader then reports "AREA NAME either not found" in a file
+  called `<database>.e`, loads nothing at all, and still exits with code 0.
+  After removing the `AREA` and `LOB-AREA` lines from a copy of the file, all
+  25 tables, 211 fields and 12 sequences load, and a class using real tables, a
+  sequence (`NEXT-VALUE`), a `LIKE` temp-table and a buffer compiles against
+  the result.
 
-Not checked: other operating systems, schemas with sequences or many tables,
-a real dumped schema, `.df` paths containing spaces, and timing on a large
-schema.
+Not checked: other operating systems, `.df` paths containing spaces, timing on a
+large schema, and schemas that use table triggers, views or multiple tenants.
 
 ## Decision
 
@@ -64,13 +72,19 @@ Proposed, and deliberately narrow:
    define the same table (compared case-insensitively), pope fails before
    loading, naming both files, because OpenEdge would otherwise silently keep
    the first definition.
-4. A build only counts as successful if the load program reaches its end.
-   Exit code 0 alone is not enough.
-5. OpenEdge is located through the `DLC` environment variable, or an explicit
+4. A build only counts as successful if the load program reaches its end and
+   OpenEdge left no error file (`<database>.e`) behind. Exit code 0 alone is
+   not enough. Otherwise pope fails and shows the first lines of that file.
+5. Storage areas (`AREA`, `LOB-AREA`) are removed from a copy of each `.df`
+   before it is loaded. They only say where data is stored on disk, which a
+   database with no data does not need. The original file is not changed, and
+   its bytes are otherwise kept as they are. The removal is a line match, so an
+   area name written across several lines would not be caught.
+6. OpenEdge is located through the `DLC` environment variable, or an explicit
    `-PpopeDlc`. Without one, pope fails with a message saying how to set it.
    pope does not otherwise require OpenEdge, and every other command keeps
    working without it.
-6. The only code for this today is an opt-in, experimental `popeDbBuild` task
+7. The only code for this today is an opt-in, experimental `popeDbBuild` task
    (`-PpopeDbName`, `-PpopeDbSchema`, optional `-PpopeDbDir`). It is not
    called by `popeInstall`, and there are no new manifest keys.
 
@@ -108,6 +122,26 @@ Not decided here, and left for a later ADR once the colleague's input exists:
 - If accepted, ADR-0003 becomes partly superseded: declaring is still allowed,
   and creating a schema-only database is allowed, but managing a real one stays
   out.
+
+## Follow-ups to consider later
+
+Not needed for the first version, and not checked yet. Each one could make a
+real schema behave differently from the ones tried so far:
+
+- **Table triggers.** A real schema can attach triggers to tables and fields,
+  and a trigger names a procedure that has to exist. OpenEdge ships
+  `sports2020trgs`, a sample with triggers, to try this on.
+- **Views and SQL objects**, such as SQL views, stored procedures and
+  constraints, which a plain `.df` may contain.
+- **Multi-tenancy and partitioned tables**, which need extra setup in the
+  database itself.
+- **Other codepages.** The sample schema used ISO-8859-1. UTF-8 and others
+  are untested.
+- **Large schemas.** Only a 25-table schema was timed, so the cost of a
+  schema with hundreds of tables is unknown.
+- **Linux.** The tool names are guesses.
+- **Paths with spaces** in the `.df` location.
+- **Several real schemas loaded together**, and what to do when they overlap.
 
 ## Alternatives considered
 

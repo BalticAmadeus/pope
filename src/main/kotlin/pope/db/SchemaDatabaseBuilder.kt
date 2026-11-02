@@ -37,7 +37,14 @@ class SchemaDatabaseBuilder(private val install: OpenEdgeInstall, private val ru
             "Could not create an empty database for \"$name\" (procopy exit ${copy.exitCode}):\n${copy.output}"
         }
 
-        File(outputDir, SCHEMA_LIST).writeText(schemaFiles.joinToString("\n") { it.absolutePath.replace('\\', '/') })
+        // Loaded from copies without storage areas, see withoutStorageAreas().
+        val loadable =
+            schemaFiles.mapIndexed { index, file ->
+                File(outputDir, "schema-${index + 1}.df").also {
+                    it.writeText(withoutStorageAreas(file.readText(Charsets.ISO_8859_1)), Charsets.ISO_8859_1)
+                }
+            }
+        File(outputDir, SCHEMA_LIST).writeText(loadable.joinToString("\n") { it.absolutePath.replace('\\', '/') })
         File(outputDir, LOAD_PROGRAM).writeText(LOAD_PROGRAM_SOURCE)
 
         val load =
@@ -47,6 +54,13 @@ class SchemaDatabaseBuilder(private val install: OpenEdgeInstall, private val ru
                 install.environment,
             )
         check(load.exitCode == 0) { "Loading the schema into \"$name\" failed (exit ${load.exitCode}):\n${load.output}" }
+
+        // The loader reports a bad .df in "<name>.e" and still exits 0, loading nothing at all.
+        val errorFile = File(outputDir, "$name.e")
+        check(!errorFile.exists()) {
+            "The schema could not be loaded into \"$name\" - OpenEdge reported (full list in ${errorFile.path}):\n" +
+                errorFile.readLines().filter { it.isNotBlank() }.take(MAX_ERROR_LINES).joinToString("\n")
+        }
         check(File(outputDir, LOAD_OK).exists()) {
             val reason = File(outputDir, LOAD_ERROR).takeIf { it.exists() }?.readText()?.trim()
             "Loading the schema into \"$name\" did not finish" + (reason?.let { ": $it" } ?: ".") +
@@ -74,6 +88,15 @@ class SchemaDatabaseBuilder(private val install: OpenEdgeInstall, private val ru
         }
     }
 
+    /**
+     * A dumped .df names the storage areas of the database it came from ("Data Area", "Index Area", ...),
+     * and the empty database has none of them, so the first table fails to load (checked with OpenEdge's
+     * own sports2020 schema). Areas are only about where data is stored on disk, which a database that
+     * holds no data and is only compiled against does not need - everything lands in the default area.
+     * Read and written as ISO-8859-1 so every byte of the file comes back unchanged, whatever its codepage.
+     */
+    private fun withoutStorageAreas(definition: String): String = STORAGE_AREA_LINE.replace(definition, "")
+
     /** procopy asks before overwriting, which would hang a non-interactive run - so start from nothing. */
     private fun removePreviousBuild(outputDir: File, name: String) {
         outputDir.listFiles { file -> file.isFile && file.name.startsWith("$name.") }.orEmpty().forEach { it.delete() }
@@ -86,7 +109,10 @@ class SchemaDatabaseBuilder(private val install: OpenEdgeInstall, private val ru
         const val LOAD_OK = "load-ok.txt"
         const val LOAD_ERROR = "load-error.txt"
 
+        const val MAX_ERROR_LINES = 12
+
         val TABLE_DEFINITION = Regex("""(?im)^\s*ADD\s+TABLE\s+"([^"]+)"""")
+        val STORAGE_AREA_LINE = Regex("""(?m)^[ \t]*(?:LOB-)?AREA[ \t]+"[^"]*"[ \t]*\r?\n""")
 
         val LOAD_PROGRAM_SOURCE =
             """

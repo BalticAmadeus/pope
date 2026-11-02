@@ -104,6 +104,29 @@ class PopeDbBuildFunctionalTest {
     }
 
     @Test
+    fun `popeDbBuild loads a schema dumped from a database that used its own storage areas`() {
+        assumeTrue(dlc != null, "DLC is not set - no OpenEdge install to test against")
+        val projectDir = projectWithSchemas()
+        // A dump from a real database names its areas, which the empty database doesn't have. Without
+        // dropping them OpenEdge loads nothing, and still exits cleanly.
+        projectDir.resolve("areas.df").writeText(
+            tableDefinition("Item", "ItemNum" to "integer", "ItemName" to "character")
+                .replace("  AREA \"Schema Area\"", "  AREA \"Data Area\"")
+                .replace("ADD INDEX \"ItemNum\" ON \"Item\"\r\n  AREA \"Data Area\"", "ADD INDEX \"ItemNum\" ON \"Item\"\r\n  AREA \"Index Area\""),
+        )
+
+        val build =
+            GradleRunner.create()
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .withArguments("popeDbBuild", "-PpopeDbName=areasdb", "-PpopeDbSchema=areas.df")
+                .build()
+
+        assertTrue(File(projectDir, "pope_db/areasdb/areasdb.db").exists(), "Expected the database, got:\n${build.output}")
+        assertTrue(!File(projectDir, "pope_db/areasdb/areasdb.e").exists(), "Expected no loader error file")
+    }
+
+    @Test
     fun `popeDbBuild fails with a clear message when the same table is in two schema files`() {
         assumeTrue(dlc != null, "DLC is not set - no OpenEdge install to test against")
         val projectDir = projectWithSchemas()
